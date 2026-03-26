@@ -66,7 +66,7 @@ struct RemindersCommands: AsyncParsableCommand {
       let config = try SyncConfigStore.load()
       let client = D1SyncClient(config: config)
 
-      let now = DateFormatter.eventDateTime.string(from: Date())
+      let now = DateFormatter.iso8601.string(from: Date())
       let reminder = Reminder(
         id: UUID().uuidString,
         title: title,
