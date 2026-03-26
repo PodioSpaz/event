@@ -13,6 +13,11 @@ public enum SyncConfigStore {
     return "\(home)/.config/event-sync/cursors.json"
   }
 
+  public static var idMappingPath: String {
+    let home = FileManager.default.homeDirectoryForCurrentUser.path
+    return "\(home)/.config/event-sync/id-mapping.json"
+  }
+
   public static func load() throws -> SyncConfig {
     let url = URL(fileURLWithPath: configPath)
     guard FileManager.default.fileExists(atPath: configPath) else {
@@ -51,5 +56,27 @@ public enum SyncConfigStore {
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let data = try JSONEncoder().encode(cursors)
     try data.write(to: URL(fileURLWithPath: cursorsPath), options: .atomic)
+  }
+
+  public static func loadIdMapping() -> SyncIdMapping {
+    guard FileManager.default.fileExists(atPath: idMappingPath) else {
+      return SyncIdMapping()
+    }
+    do {
+      let data = try Data(contentsOf: URL(fileURLWithPath: idMappingPath))
+      return try JSONDecoder().decode(SyncIdMapping.self, from: data)
+    } catch {
+      print(
+        "Warning: Could not parse \(idMappingPath): \(error.localizedDescription). Starting with empty mapping."
+      )
+      return SyncIdMapping()
+    }
+  }
+
+  public static func saveIdMapping(_ mapping: SyncIdMapping) throws {
+    let dir = URL(fileURLWithPath: idMappingPath).deletingLastPathComponent()
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let data = try JSONEncoder().encode(mapping)
+    try data.write(to: URL(fileURLWithPath: idMappingPath), options: .atomic)
   }
 }

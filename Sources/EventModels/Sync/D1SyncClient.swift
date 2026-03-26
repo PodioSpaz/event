@@ -20,12 +20,14 @@ public actor D1SyncClient {
 
   // MARK: - Reminders
 
-  public func pushReminders(_ reminders: [Reminder]) async throws -> PushResult {
+  public func pushReminders(
+    _ reminders: [Reminder], idOverrides: [String: String] = [:]
+  ) async throws -> PushResult {
     let items = reminders.map { reminder in
       PushRequestItem(
-        id: reminder.id,
+        id: idOverrides[reminder.id] ?? reminder.id,
         data: reminder,
-        lastModified: reminder.lastModifiedDate ?? "1970-01-01 00:00:00"
+        lastModified: reminder.lastModifiedDate ?? DateFormatter.iso8601.string(from: Date())
       )
     }
     return try await push(entity: "reminders", items: items)
@@ -37,12 +39,14 @@ public actor D1SyncClient {
 
   // MARK: - Calendar Events
 
-  public func pushEvents(_ events: [CalendarEvent]) async throws -> PushResult {
+  public func pushEvents(
+    _ events: [CalendarEvent], idOverrides: [String: String] = [:]
+  ) async throws -> PushResult {
     let items = events.map { event in
       PushRequestItem(
-        id: event.id,
+        id: idOverrides[event.id] ?? event.id,
         data: event,
-        lastModified: event.lastModifiedDate ?? "1970-01-01 00:00:00"
+        lastModified: event.lastModifiedDate ?? DateFormatter.iso8601.string(from: Date())
       )
     }
     return try await push(entity: "calendar_events", items: items)
@@ -54,9 +58,16 @@ public actor D1SyncClient {
 
   // MARK: - Reminder Lists
 
-  public func pushLists(_ lists: [ReminderList]) async throws -> PushResult {
+  public func pushLists(
+    _ lists: [ReminderList], idOverrides: [String: String] = [:]
+  ) async throws -> PushResult {
+    let now = DateFormatter.iso8601.string(from: Date())
     let items = lists.map { list in
-      PushRequestItem(id: list.id, data: list, lastModified: "1970-01-01 00:00:00")
+      PushRequestItem(
+        id: idOverrides[list.id] ?? list.id,
+        data: list,
+        lastModified: now
+      )
     }
     return try await push(entity: "reminder_lists", items: items)
   }
@@ -105,7 +116,11 @@ public actor D1SyncClient {
   }
 
   private func pull<T: Codable>(entity: String, cursor: String?) async throws -> PullResponse<T> {
-    let cursorParam = cursor.map { "?cursor=\($0)" } ?? ""
+    let cursorParam =
+      cursor.map {
+        "?cursor=\($0.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0)"
+      }
+      ?? ""
     var httpRequest = HTTPClientRequest(
       url: "\(config.apiURL)/api/v1/\(entity)/pull\(cursorParam)"
     )

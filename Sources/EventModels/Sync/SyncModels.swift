@@ -34,6 +34,24 @@ public struct PullItem<T: Codable & Sendable>: Sendable {
   public let updatedAt: String
 }
 
+// MARK: - Sync ID Mapping
+
+public struct SyncIdMapping: Codable, Sendable {
+  public var reminders: [String: String]
+  public var calendarEvents: [String: String]
+  public var reminderLists: [String: String]
+
+  public init(
+    reminders: [String: String] = [:],
+    calendarEvents: [String: String] = [:],
+    reminderLists: [String: String] = [:]
+  ) {
+    self.reminders = reminders
+    self.calendarEvents = calendarEvents
+    self.reminderLists = reminderLists
+  }
+}
+
 // MARK: - Sync Cursors
 
 public struct SyncCursors: Codable, Sendable {
