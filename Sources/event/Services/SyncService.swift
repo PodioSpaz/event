@@ -19,7 +19,12 @@ actor SyncService {
 
   func pushReminders() async throws -> PushResult {
     let reminders = try await reminderService.fetchReminders(showCompleted: true)
-    return try await syncClient.pushReminders(reminders)
+    let idMapping = SyncConfigStore.loadIdMapping()
+    let localToRemote = Dictionary(
+      idMapping.reminders.map { ($0.value, $0.key) },
+      uniquingKeysWith: { first, _ in first }
+    )
+    return try await syncClient.pushReminders(reminders, idOverrides: localToRemote)
   }
 
   func pushEvents() async throws -> PushResult {
@@ -31,18 +36,29 @@ actor SyncService {
       startDate: formatter.string(from: start),
       endDate: formatter.string(from: end)
     )
-    return try await syncClient.pushEvents(events)
+    let idMapping = SyncConfigStore.loadIdMapping()
+    let localToRemote = Dictionary(
+      idMapping.calendarEvents.map { ($0.value, $0.key) },
+      uniquingKeysWith: { first, _ in first }
+    )
+    return try await syncClient.pushEvents(events, idOverrides: localToRemote)
   }
 
   func pushLists() async throws -> PushResult {
     let lists = try await listService.fetchLists()
-    return try await syncClient.pushLists(lists)
+    let idMapping = SyncConfigStore.loadIdMapping()
+    let localToRemote = Dictionary(
+      idMapping.reminderLists.map { ($0.value, $0.key) },
+      uniquingKeysWith: { first, _ in first }
+    )
+    return try await syncClient.pushLists(lists, idOverrides: localToRemote)
   }
 
   // MARK: - Pull
 
   func pullReminders() async throws -> PullSummary {
     var cursors = SyncConfigStore.loadCursors()
+    var idMapping = SyncConfigStore.loadIdMapping()
     var pulled = 0
     var deleted = 0
     var hasMore = true
@@ -52,9 +68,12 @@ actor SyncService {
       hasMore = response.hasMore
 
       for item in response.items {
+        let localId = idMapping.reminders[item.id] ?? item.id
+
         if item.deleted {
           do {
-            try await reminderService.deleteReminder(id: item.id)
+            try await reminderService.deleteReminder(id: localId)
+            idMapping.reminders.removeValue(forKey: item.id)
             deleted += 1
           } catch {
             print("Warning: Could not delete reminder \(item.id): \(error)")
@@ -62,7 +81,7 @@ actor SyncService {
         } else {
           do {
             _ = try await reminderService.updateReminder(
-              id: item.id,
+              id: localId,
               title: item.data.title,
               completed: item.data.isCompleted,
               notes: item.data.notes,
@@ -73,9 +92,8 @@ actor SyncService {
             )
             pulled += 1
           } catch {
-            // Not found locally -- create new
             do {
-              _ = try await reminderService.createReminder(
+              let created = try await reminderService.createReminder(
                 title: item.data.title,
                 listName: item.data.list,
                 notes: item.data.notes,
@@ -83,6 +101,7 @@ actor SyncService {
                 priority: item.data.priority,
                 useShortcuts: false
               )
+              idMapping.reminders[item.id] = created.id
               pulled += 1
             } catch {
               print("Warning: Could not sync reminder \(item.id): \(error)")
@@ -95,11 +114,13 @@ actor SyncService {
     }
 
     try SyncConfigStore.saveCursors(cursors)
+    try SyncConfigStore.saveIdMapping(idMapping)
     return PullSummary(pulled: pulled, deleted: deleted)
   }
 
   func pullEvents() async throws -> PullSummary {
     var cursors = SyncConfigStore.loadCursors()
+    var idMapping = SyncConfigStore.loadIdMapping()
     var pulled = 0
     var deleted = 0
     var hasMore = true
@@ -109,9 +130,12 @@ actor SyncService {
       hasMore = response.hasMore
 
       for item in response.items {
+        let localId = idMapping.calendarEvents[item.id] ?? item.id
+
         if item.deleted {
           do {
-            try await calendarService.deleteEvent(id: item.id)
+            try await calendarService.deleteEvent(id: localId)
+            idMapping.calendarEvents.removeValue(forKey: item.id)
             deleted += 1
           } catch {
             print("Warning: Could not delete event \(item.id): \(error)")
@@ -119,7 +143,7 @@ actor SyncService {
         } else {
           do {
             _ = try await calendarService.updateEvent(
-              id: item.id,
+              id: localId,
               title: item.data.title,
               startDate: item.data.startDate,
               endDate: item.data.endDate,
@@ -129,13 +153,14 @@ actor SyncService {
             pulled += 1
           } catch {
             do {
-              _ = try await calendarService.createEvent(
+              let created = try await calendarService.createEvent(
                 title: item.data.title,
                 startDate: item.data.startDate,
                 endDate: item.data.endDate,
                 location: item.data.location,
                 notes: item.data.notes
               )
+              idMapping.calendarEvents[item.id] = created.id
               pulled += 1
             } catch {
               print("Warning: Could not sync event \(item.id): \(error)")
@@ -148,11 +173,13 @@ actor SyncService {
     }
 
     try SyncConfigStore.saveCursors(cursors)
+    try SyncConfigStore.saveIdMapping(idMapping)
     return PullSummary(pulled: pulled, deleted: deleted)
   }
 
   func pullLists() async throws -> PullSummary {
     var cursors = SyncConfigStore.loadCursors()
+    var idMapping = SyncConfigStore.loadIdMapping()
     var pulled = 0
     var deleted = 0
     var hasMore = true
@@ -162,20 +189,24 @@ actor SyncService {
       hasMore = response.hasMore
 
       for item in response.items {
+        let localId = idMapping.reminderLists[item.id] ?? item.id
+
         if item.deleted {
           do {
-            try await listService.deleteList(id: item.id)
+            try await listService.deleteList(id: localId)
+            idMapping.reminderLists.removeValue(forKey: item.id)
             deleted += 1
           } catch {
             print("Warning: Could not delete list \(item.id): \(error)")
           }
         } else {
           do {
-            _ = try await listService.updateList(id: item.id, name: item.data.title)
+            _ = try await listService.updateList(id: localId, name: item.data.title)
             pulled += 1
           } catch {
             do {
-              _ = try await listService.createList(name: item.data.title)
+              let created = try await listService.createList(name: item.data.title)
+              idMapping.reminderLists[item.id] = created.id
               pulled += 1
             } catch {
               print("Warning: Could not sync list \(item.id): \(error)")
@@ -188,6 +219,7 @@ actor SyncService {
     }
 
     try SyncConfigStore.saveCursors(cursors)
+    try SyncConfigStore.saveIdMapping(idMapping)
     return PullSummary(pulled: pulled, deleted: deleted)
   }
 }
