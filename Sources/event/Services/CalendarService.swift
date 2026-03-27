@@ -125,6 +125,11 @@ actor CalendarService {
       ekEvent.notes = notes
     }
 
+    if ekEvent.endDate < ekEvent.startDate {
+      throw EventCLIError.invalidInput(
+        "End date must be on or after start date")
+    }
+
     try eventStore.save(ekEvent, span: .thisEvent, commit: true)
     return CalendarEvent(from: ekEvent)
   }
@@ -139,8 +144,10 @@ actor CalendarService {
 
     let ekSpan: EKSpan
     switch span.lowercased() {
-    case "all":
+    case "future":
       ekSpan = .futureEvents
+    case "all":
+      ekSpan = .allEvents
     default:
       ekSpan = .thisEvent
     }
