@@ -1,6 +1,7 @@
 import EventCommands
 import EventKit
 import EventModels
+import EventSync
 import Foundation
 
 // MARK: - Sync Service

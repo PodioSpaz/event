@@ -17,7 +17,55 @@ type PushRequest = {
   items: PushItem[];
 };
 
-const ALLOWED_ENTITIES = new Set(["reminders", "calendar_events", "reminder_lists"]);
+// Hardcoded SQL per entity to avoid any table-name injection risk.
+// Each key maps to the full set of prepared statements needed.
+type EntitySQL = {
+  selectLastModified: string;
+  insert: string;
+  update: string;
+  selectPage: string;
+  softDelete: string;
+};
+
+const ENTITY_SQL: Record<string, EntitySQL> = {
+  reminders: {
+    selectLastModified: "SELECT last_modified FROM reminders WHERE id = ?",
+    insert:
+      "INSERT INTO reminders (id, data, last_modified, updated_at) VALUES (?, ?, ?, datetime('now'))",
+    update:
+      "UPDATE reminders SET data = ?, last_modified = ?, deleted = 0, updated_at = datetime('now') WHERE id = ?",
+    selectPage:
+      "SELECT id, data, deleted, updated_at FROM reminders WHERE (updated_at > ?1 OR (updated_at = ?1 AND id > ?2)) ORDER BY updated_at ASC, id ASC LIMIT ?3",
+    softDelete:
+      "UPDATE reminders SET deleted = 1, updated_at = datetime('now') WHERE id = ?",
+  },
+  calendar_events: {
+    selectLastModified: "SELECT last_modified FROM calendar_events WHERE id = ?",
+    insert:
+      "INSERT INTO calendar_events (id, data, last_modified, updated_at) VALUES (?, ?, ?, datetime('now'))",
+    update:
+      "UPDATE calendar_events SET data = ?, last_modified = ?, deleted = 0, updated_at = datetime('now') WHERE id = ?",
+    selectPage:
+      "SELECT id, data, deleted, updated_at FROM calendar_events WHERE (updated_at > ?1 OR (updated_at = ?1 AND id > ?2)) ORDER BY updated_at ASC, id ASC LIMIT ?3",
+    softDelete:
+      "UPDATE calendar_events SET deleted = 1, updated_at = datetime('now') WHERE id = ?",
+  },
+  reminder_lists: {
+    selectLastModified: "SELECT last_modified FROM reminder_lists WHERE id = ?",
+    insert:
+      "INSERT INTO reminder_lists (id, data, last_modified, updated_at) VALUES (?, ?, ?, datetime('now'))",
+    update:
+      "UPDATE reminder_lists SET data = ?, last_modified = ?, deleted = 0, updated_at = datetime('now') WHERE id = ?",
+    selectPage:
+      "SELECT id, data, deleted, updated_at FROM reminder_lists WHERE (updated_at > ?1 OR (updated_at = ?1 AND id > ?2)) ORDER BY updated_at ASC, id ASC LIMIT ?3",
+    softDelete:
+      "UPDATE reminder_lists SET deleted = 1, updated_at = datetime('now') WHERE id = ?",
+  },
+};
+
+function getSQL(entity: string): EntitySQL | null {
+  return ENTITY_SQL[entity] ?? null;
+}
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -32,8 +80,8 @@ app.get("/health", (c) => c.json({ status: "ok" }));
 
 // Push: batch upsert with last-write-wins
 app.post("/api/v1/:entity/push", async (c) => {
-  const entity = c.req.param("entity");
-  if (!ALLOWED_ENTITIES.has(entity)) {
+  const sql = getSQL(c.req.param("entity"));
+  if (!sql) {
     return c.json({ error: "Invalid entity" }, 400);
   }
 
@@ -48,23 +96,17 @@ app.post("/api/v1/:entity/push", async (c) => {
   let skipped = 0;
 
   for (const item of items) {
-    const existing = await c.env.DB.prepare(
-      `SELECT last_modified FROM ${entity} WHERE id = ?`
-    )
+    const existing = await c.env.DB.prepare(sql.selectLastModified)
       .bind(item.id)
       .first<{ last_modified: string }>();
 
     if (!existing) {
-      await c.env.DB.prepare(
-        `INSERT INTO ${entity} (id, data, last_modified, updated_at) VALUES (?, ?, ?, datetime('now'))`
-      )
+      await c.env.DB.prepare(sql.insert)
         .bind(item.id, JSON.stringify(item.data), item.last_modified)
         .run();
       synced++;
     } else if (item.last_modified >= existing.last_modified) {
-      await c.env.DB.prepare(
-        `UPDATE ${entity} SET data = ?, last_modified = ?, deleted = 0, updated_at = datetime('now') WHERE id = ?`
-      )
+      await c.env.DB.prepare(sql.update)
         .bind(JSON.stringify(item.data), item.last_modified, item.id)
         .run();
       synced++;
@@ -78,8 +120,8 @@ app.post("/api/v1/:entity/push", async (c) => {
 
 // Pull: incremental cursor-based fetch using composite (updated_at, id) cursor
 app.get("/api/v1/:entity/pull", async (c) => {
-  const entity = c.req.param("entity");
-  if (!ALLOWED_ENTITIES.has(entity)) {
+  const sql = getSQL(c.req.param("entity"));
+  if (!sql) {
     return c.json({ error: "Invalid entity" }, 400);
   }
 
@@ -96,9 +138,7 @@ app.get("/api/v1/:entity/pull", async (c) => {
     cursorId = "";
   }
 
-  const { results } = await c.env.DB.prepare(
-    `SELECT id, data, deleted, updated_at FROM ${entity} WHERE (updated_at > ?1 OR (updated_at = ?1 AND id > ?2)) ORDER BY updated_at ASC, id ASC LIMIT ?3`
-  )
+  const { results } = await c.env.DB.prepare(sql.selectPage)
     .bind(cursorTime, cursorId, limit)
     .all<{ id: string; data: string; deleted: number; updated_at: string }>();
 
@@ -120,18 +160,14 @@ app.get("/api/v1/:entity/pull", async (c) => {
 
 // Soft delete
 app.delete("/api/v1/:entity/:id", async (c) => {
-  const entity = c.req.param("entity");
+  const sql = getSQL(c.req.param("entity"));
   const id = c.req.param("id");
 
-  if (!ALLOWED_ENTITIES.has(entity)) {
+  if (!sql) {
     return c.json({ error: "Invalid entity" }, 400);
   }
 
-  await c.env.DB.prepare(
-    `UPDATE ${entity} SET deleted = 1, updated_at = datetime('now') WHERE id = ?`
-  )
-    .bind(id)
-    .run();
+  await c.env.DB.prepare(sql.softDelete).bind(id).run();
 
   return c.json({ deleted: true });
 });

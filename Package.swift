@@ -1,9 +1,9 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 5.9
 import PackageDescription
 
 let package = Package(
   name: "event",
-  platforms: [.macOS(.v15)],
+  platforms: [.macOS(.v14)],
   products: [
     .executable(name: "event", targets: ["event"]),
     .executable(name: "event-sync", targets: ["event-sync"]),
@@ -16,13 +16,15 @@ let package = Package(
   targets: [
     .target(
       name: "EventModels",
+      path: "Sources/EventModels"
+    ),
+    .target(
+      name: "EventSync",
       dependencies: [
-        .product(name: "AsyncHTTPClient", package: "async-http-client")
+        "EventModels",
+        .product(name: "AsyncHTTPClient", package: "async-http-client"),
       ],
-      path: "Sources/EventModels",
-      swiftSettings: [
-        .swiftLanguageMode(.v5)
-      ]
+      path: "Sources/EventSync"
     ),
     .target(
       name: "EventCommands",
@@ -30,52 +32,43 @@ let package = Package(
         "EventModels",
         .product(name: "ArgumentParser", package: "swift-argument-parser"),
       ],
-      path: "Sources/EventCommands",
-      swiftSettings: [
-        .swiftLanguageMode(.v5)
-      ]
+      path: "Sources/EventCommands"
     ),
     .executableTarget(
       name: "event",
       dependencies: [
         "EventModels",
+        "EventSync",
         "EventCommands",
         .product(name: "ArgumentParser", package: "swift-argument-parser"),
       ],
       path: "Sources/event",
       swiftSettings: [
-        .unsafeFlags(["-parse-as-library"]),
-        .swiftLanguageMode(.v5),
+        .unsafeFlags(["-parse-as-library"])
       ]
     ),
     .executableTarget(
       name: "event-sync",
       dependencies: [
         "EventModels",
+        "EventSync",
         "EventCommands",
         .product(name: "ArgumentParser", package: "swift-argument-parser"),
       ],
       path: "Sources/event-sync",
       swiftSettings: [
-        .unsafeFlags(["-parse-as-library"]),
-        .swiftLanguageMode(.v5),
+        .unsafeFlags(["-parse-as-library"])
       ]
     ),
     .testTarget(
       name: "EventModelsTests",
       dependencies: ["EventModels"],
-      path: "Tests/EventModelsTests",
-      swiftSettings: [
-        .swiftLanguageMode(.v5)
-      ]
+      path: "Tests/EventModelsTests"
     ),
     .testTarget(
       name: "eventTests",
       dependencies: ["event"],
-      path: "Tests/eventTests",
-      swiftSettings: [
-        .swiftLanguageMode(.v5)
-      ]
+      path: "Tests/eventTests"
     ),
   ]
 )
