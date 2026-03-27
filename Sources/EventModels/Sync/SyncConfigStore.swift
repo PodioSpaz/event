@@ -34,6 +34,7 @@ public enum SyncConfigStore {
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let data = try JSONEncoder().encode(config)
     try data.write(to: URL(fileURLWithPath: configPath), options: .atomic)
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: configPath)
   }
 
   public static func loadCursors() -> SyncCursors {
@@ -56,6 +57,7 @@ public enum SyncConfigStore {
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let data = try JSONEncoder().encode(cursors)
     try data.write(to: URL(fileURLWithPath: cursorsPath), options: .atomic)
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: cursorsPath)
   }
 
   public static func loadIdMapping() -> SyncIdMapping {
@@ -78,5 +80,6 @@ public enum SyncConfigStore {
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let data = try JSONEncoder().encode(mapping)
     try data.write(to: URL(fileURLWithPath: idMappingPath), options: .atomic)
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: idMappingPath)
   }
 }

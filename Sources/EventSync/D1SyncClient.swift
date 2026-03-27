@@ -1,4 +1,5 @@
 import AsyncHTTPClient
+import EventModels
 import Foundation
 import NIOCore
 import NIOFoundationCompat
@@ -14,8 +15,9 @@ public actor D1SyncClient {
     self.httpClient = HTTPClient(eventLoopGroupProvider: .singleton)
   }
 
-  deinit {
-    try? httpClient.syncShutdown()
+  /// Shut down the underlying HTTP client. Call before discarding the client.
+  public func shutdown() async throws {
+    try await httpClient.shutdown()
   }
 
   // MARK: - Reminders
@@ -139,7 +141,7 @@ public actor D1SyncClient {
 
     let items: [PullItem<T>] = dto.items.compactMap { itemDTO in
       do {
-        let jsonData = try JSONSerialization.data(withJSONObject: itemDTO.data.value)
+        let jsonData = try JSONSerialization.data(withJSONObject: itemDTO.data.rawValue)
         let decoded = try JSONDecoder().decode(T.self, from: jsonData)
         return PullItem(
           id: itemDTO.id,
