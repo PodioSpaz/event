@@ -67,6 +67,7 @@ actor SyncService {
     while hasMore {
       let response = try await syncClient.pullReminders(cursor: cursors.reminders)
       hasMore = response.hasMore
+      var hadFailures = false
 
       for item in response.items {
         let localId = idMapping.reminders[item.id] ?? item.id
@@ -78,6 +79,7 @@ actor SyncService {
             deleted += 1
           } catch {
             print("Warning: Could not delete reminder \(item.id): \(error)")
+            hadFailures = true
           }
         } else {
           do {
@@ -106,12 +108,22 @@ actor SyncService {
               pulled += 1
             } catch {
               print("Warning: Could not sync reminder \(item.id): \(error)")
+              hadFailures = true
             }
           }
         }
       }
 
-      cursors.reminders = response.cursor
+      cursors.reminders = SyncCursorPolicy.nextCursor(
+        currentCursor: cursors.reminders,
+        responseCursor: response.cursor,
+        hadFailures: hadFailures
+      )
+      if hadFailures {
+        throw EventCLIError.unknown(
+          "Pull reminders failed for one or more items. Cursor was not advanced."
+        )
+      }
     }
 
     try SyncConfigStore.saveCursors(cursors)
@@ -129,6 +141,7 @@ actor SyncService {
     while hasMore {
       let response = try await syncClient.pullEvents(cursor: cursors.calendarEvents)
       hasMore = response.hasMore
+      var hadFailures = false
 
       for item in response.items {
         let localId = idMapping.calendarEvents[item.id] ?? item.id
@@ -140,6 +153,7 @@ actor SyncService {
             deleted += 1
           } catch {
             print("Warning: Could not delete event \(item.id): \(error)")
+            hadFailures = true
           }
         } else {
           do {
@@ -165,12 +179,22 @@ actor SyncService {
               pulled += 1
             } catch {
               print("Warning: Could not sync event \(item.id): \(error)")
+              hadFailures = true
             }
           }
         }
       }
 
-      cursors.calendarEvents = response.cursor
+      cursors.calendarEvents = SyncCursorPolicy.nextCursor(
+        currentCursor: cursors.calendarEvents,
+        responseCursor: response.cursor,
+        hadFailures: hadFailures
+      )
+      if hadFailures {
+        throw EventCLIError.unknown(
+          "Pull calendar events failed for one or more items. Cursor was not advanced."
+        )
+      }
     }
 
     try SyncConfigStore.saveCursors(cursors)
@@ -188,6 +212,7 @@ actor SyncService {
     while hasMore {
       let response = try await syncClient.pullLists(cursor: cursors.reminderLists)
       hasMore = response.hasMore
+      var hadFailures = false
 
       for item in response.items {
         let localId = idMapping.reminderLists[item.id] ?? item.id
@@ -199,6 +224,7 @@ actor SyncService {
             deleted += 1
           } catch {
             print("Warning: Could not delete list \(item.id): \(error)")
+            hadFailures = true
           }
         } else {
           do {
@@ -211,12 +237,22 @@ actor SyncService {
               pulled += 1
             } catch {
               print("Warning: Could not sync list \(item.id): \(error)")
+              hadFailures = true
             }
           }
         }
       }
 
-      cursors.reminderLists = response.cursor
+      cursors.reminderLists = SyncCursorPolicy.nextCursor(
+        currentCursor: cursors.reminderLists,
+        responseCursor: response.cursor,
+        hadFailures: hadFailures
+      )
+      if hadFailures {
+        throw EventCLIError.unknown(
+          "Pull reminder lists failed for one or more items. Cursor was not advanced."
+        )
+      }
     }
 
     try SyncConfigStore.saveCursors(cursors)

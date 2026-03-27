@@ -1,4 +1,5 @@
 import Foundation
+import EventModels
 
 // MARK: - Push Request Models
 
@@ -49,6 +50,37 @@ struct PullItemDTO: Codable {
     case data
     case deleted
     case updatedAt = "updated_at"
+  }
+}
+
+enum PullItemDecoder {
+  static func decodeItems<T: Codable & Sendable>(
+    from items: [PullItemDTO],
+    entity: String
+  ) throws -> [PullItem<T>] {
+    var decodedItems: [PullItem<T>] = []
+    decodedItems.reserveCapacity(items.count)
+
+    for itemDTO in items {
+      do {
+        let jsonData = try JSONSerialization.data(withJSONObject: itemDTO.data.rawValue)
+        let decoded = try JSONDecoder().decode(T.self, from: jsonData)
+        decodedItems.append(
+          PullItem(
+            id: itemDTO.id,
+            data: decoded,
+            deleted: itemDTO.deleted,
+            updatedAt: itemDTO.updatedAt
+          )
+        )
+      } catch {
+        throw EventCLIError.unknown(
+          "Failed to decode \(entity) item \(itemDTO.id): \(error.localizedDescription)"
+        )
+      }
+    }
+
+    return decodedItems
   }
 }
 

@@ -138,22 +138,7 @@ public actor D1SyncClient {
     }
 
     let dto = try JSONDecoder().decode(PullResponseDTO.self, from: Data(buffer: responseData))
-
-    let items: [PullItem<T>] = dto.items.compactMap { itemDTO in
-      do {
-        let jsonData = try JSONSerialization.data(withJSONObject: itemDTO.data.rawValue)
-        let decoded = try JSONDecoder().decode(T.self, from: jsonData)
-        return PullItem(
-          id: itemDTO.id,
-          data: decoded,
-          deleted: itemDTO.deleted,
-          updatedAt: itemDTO.updatedAt
-        )
-      } catch {
-        print("Warning: Failed to decode \(entity) item \(itemDTO.id): \(error)")
-        return nil
-      }
-    }
+    let items: [PullItem<T>] = try PullItemDecoder.decodeItems(from: dto.items, entity: entity)
 
     return PullResponse(items: items, cursor: dto.cursor, hasMore: dto.hasMore)
   }
