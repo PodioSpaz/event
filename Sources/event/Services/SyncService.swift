@@ -81,6 +81,9 @@ actor SyncService {
             try await reminderService.deleteReminder(id: localId)
             idMapping.reminders.removeValue(forKey: item.id)
             deleted += 1
+          } catch let error as EventCLIError where isNotFoundError(error) {
+            idMapping.reminders.removeValue(forKey: item.id)
+            deleted += 1
           } catch {
             print("Warning: Could not delete reminder \(item.id): \(error)")
             hadFailures = true
@@ -104,10 +107,19 @@ actor SyncService {
                 title: item.data.title,
                 listName: item.data.list,
                 notes: item.data.notes,
+                url: item.data.url,
                 dueDate: item.data.dueDate,
                 priority: item.data.priority,
                 useShortcuts: false
               )
+              if item.data.isCompleted || item.data.startDate != nil {
+                _ = try await reminderService.updateReminder(
+                  id: created.id,
+                  completed: item.data.isCompleted,
+                  startDate: item.data.startDate,
+                  useShortcuts: false
+                )
+              }
               idMapping.reminders[item.id] = created.id
               pulled += 1
             } catch {
@@ -155,6 +167,9 @@ actor SyncService {
             try await calendarService.deleteEvent(id: localId)
             idMapping.calendarEvents.removeValue(forKey: item.id)
             deleted += 1
+          } catch let error as EventCLIError where isNotFoundError(error) {
+            idMapping.calendarEvents.removeValue(forKey: item.id)
+            deleted += 1
           } catch {
             print("Warning: Could not delete event \(item.id): \(error)")
             hadFailures = true
@@ -176,6 +191,7 @@ actor SyncService {
                 title: item.data.title,
                 startDate: item.data.startDate,
                 endDate: item.data.endDate,
+                calendarName: item.data.calendar,
                 location: item.data.location,
                 notes: item.data.notes
               )
@@ -226,6 +242,9 @@ actor SyncService {
             try await listService.deleteList(id: localId)
             idMapping.reminderLists.removeValue(forKey: item.id)
             deleted += 1
+          } catch let error as EventCLIError where isNotFoundError(error) {
+            idMapping.reminderLists.removeValue(forKey: item.id)
+            deleted += 1
           } catch {
             print("Warning: Could not delete list \(item.id): \(error)")
             hadFailures = true
@@ -262,5 +281,12 @@ actor SyncService {
     try SyncConfigStore.saveCursors(cursors)
     try SyncConfigStore.saveIdMapping(idMapping)
     return PullSummary(pulled: pulled, deleted: deleted)
+  }
+
+  private func isNotFoundError(_ error: EventCLIError) -> Bool {
+    if case .notFound = error {
+      return true
+    }
+    return false
   }
 }
