@@ -25,6 +25,7 @@ struct CalendarCommands: AsyncParsableCommand {
     func run() async throws {
       let config = try SyncConfigStore.load()
       let client = D1SyncClient(config: config)
+      defer { Task { try? await client.shutdown() } }
       var allEvents: [CalendarEvent] = []
       var cursor: String? = nil
       var hasMore = true

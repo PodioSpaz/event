@@ -29,7 +29,7 @@ public actor D1SyncClient {
       PushRequestItem(
         id: idOverrides[reminder.id] ?? reminder.id,
         data: reminder,
-        lastModified: reminder.lastModifiedDate ?? DateFormatter.iso8601.string(from: Date())
+        lastModified: reminder.lastModifiedDate ?? DateFormatter.eventISO8601.string(from: Date())
       )
     }
     return try await push(entity: "reminders", items: items)
@@ -48,7 +48,7 @@ public actor D1SyncClient {
       PushRequestItem(
         id: idOverrides[event.id] ?? event.id,
         data: event,
-        lastModified: event.lastModifiedDate ?? DateFormatter.iso8601.string(from: Date())
+        lastModified: event.lastModifiedDate ?? DateFormatter.eventISO8601.string(from: Date())
       )
     }
     return try await push(entity: "calendar_events", items: items)
@@ -63,7 +63,7 @@ public actor D1SyncClient {
   public func pushLists(
     _ lists: [ReminderList], idOverrides: [String: String] = [:]
   ) async throws -> PushResult {
-    let now = DateFormatter.iso8601.string(from: Date())
+    let now = DateFormatter.eventISO8601.string(from: Date())
     let items = lists.map { list in
       PushRequestItem(
         id: idOverrides[list.id] ?? list.id,

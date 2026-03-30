@@ -30,7 +30,7 @@ extension CalendarEvent {
       endDate = formatter.string(from: end)
     }
 
-    let utcFormatter = DateFormatter.iso8601
+    let utcFormatter = DateFormatter.eventISO8601
 
     let status: String
     switch ekEvent.status {
@@ -51,8 +51,17 @@ extension CalendarEvent {
     @unknown default: availability = "unknown"
     }
 
+    let eventId: String
+    if let identifier = ekEvent.eventIdentifier {
+      eventId = identifier
+    } else if let externalId = ekEvent.calendarItemExternalIdentifier, !externalId.isEmpty {
+      eventId = externalId
+    } else {
+      eventId = "ek-\(ekEvent.title ?? "untitled")-\(ekEvent.startDate?.timeIntervalSince1970 ?? 0)"
+    }
+
     self.init(
-      id: ekEvent.eventIdentifier ?? ekEvent.calendarItemExternalIdentifier ?? UUID().uuidString,
+      id: eventId,
       title: ekEvent.title ?? "",
       calendar: ekEvent.calendar?.title ?? "Unknown",
       startDate: startDate,

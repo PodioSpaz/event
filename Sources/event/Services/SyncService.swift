@@ -16,6 +16,10 @@ actor SyncService {
     self.syncClient = D1SyncClient(config: config)
   }
 
+  func shutdown() async throws {
+    try await syncClient.shutdown()
+  }
+
   // MARK: - Push
 
   func pushReminders() async throws -> PushResult {

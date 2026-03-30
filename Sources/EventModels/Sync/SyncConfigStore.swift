@@ -3,19 +3,22 @@ import Foundation
 // MARK: - Sync Config Store
 
 public enum SyncConfigStore {
+  private static var baseDirectory: URL {
+    FileManager.default.homeDirectoryForCurrentUser
+      .appendingPathComponent(".config")
+      .appendingPathComponent("event-sync")
+  }
+
   public static var configPath: String {
-    let home = FileManager.default.homeDirectoryForCurrentUser.path
-    return "\(home)/.config/event-sync/config.json"
+    baseDirectory.appendingPathComponent("config.json").path
   }
 
   public static var cursorsPath: String {
-    let home = FileManager.default.homeDirectoryForCurrentUser.path
-    return "\(home)/.config/event-sync/cursors.json"
+    baseDirectory.appendingPathComponent("cursors.json").path
   }
 
   public static var idMappingPath: String {
-    let home = FileManager.default.homeDirectoryForCurrentUser.path
-    return "\(home)/.config/event-sync/id-mapping.json"
+    baseDirectory.appendingPathComponent("id-mapping.json").path
   }
 
   public static func load() throws -> SyncConfig {
@@ -30,6 +33,11 @@ public enum SyncConfigStore {
   }
 
   public static func save(_ config: SyncConfig) throws {
+    guard config.apiURL.lowercased().hasPrefix("https://") else {
+      throw EventCLIError.invalidInput(
+        "API URL must use HTTPS. Got: \(config.apiURL)"
+      )
+    }
     let dir = URL(fileURLWithPath: configPath).deletingLastPathComponent()
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let data = try JSONEncoder().encode(config)

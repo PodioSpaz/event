@@ -25,6 +25,7 @@ struct RemindersCommands: AsyncParsableCommand {
     func run() async throws {
       let config = try SyncConfigStore.load()
       let client = D1SyncClient(config: config)
+      defer { Task { try? await client.shutdown() } }
       var allReminders: [Reminder] = []
       var cursor: String? = nil
       var hasMore = true
@@ -71,8 +72,9 @@ struct RemindersCommands: AsyncParsableCommand {
 
       let config = try SyncConfigStore.load()
       let client = D1SyncClient(config: config)
+      defer { Task { try? await client.shutdown() } }
 
-      let now = DateFormatter.iso8601.string(from: Date())
+      let now = DateFormatter.eventISO8601.string(from: Date())
       let reminder = Reminder(
         id: UUID().uuidString,
         title: title,

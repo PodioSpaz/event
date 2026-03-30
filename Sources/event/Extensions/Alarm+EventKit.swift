@@ -23,7 +23,7 @@ extension Alarm {
     } else if let absoluteDate = ekAlarm.absoluteDate {
       self.init(
         relativeOffset: nil,
-        absoluteDate: DateFormatter.iso8601.string(from: absoluteDate),
+        absoluteDate: DateFormatter.eventISO8601.string(from: absoluteDate),
         locationTrigger: nil,
         alarmType: alarmType
       )
