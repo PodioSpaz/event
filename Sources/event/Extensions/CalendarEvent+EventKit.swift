@@ -57,7 +57,8 @@ extension CalendarEvent {
     } else if let externalId = ekEvent.calendarItemExternalIdentifier, !externalId.isEmpty {
       eventId = externalId
     } else {
-      eventId = "ek-\(ekEvent.title ?? "untitled")-\(ekEvent.startDate?.timeIntervalSince1970 ?? 0)"
+      eventId =
+        "ek-\(ekEvent.calendar?.title ?? "unknown")-\(ekEvent.title ?? "untitled")-\(ekEvent.startDate?.timeIntervalSince1970 ?? 0)"
     }
 
     self.init(
