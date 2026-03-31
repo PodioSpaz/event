@@ -60,13 +60,14 @@ enum PullItemDecoder {
     from items: [PullItemDTO],
     entity: String
   ) throws -> [PullItem<T>] {
+    let decoder = JSONDecoder()
     var decodedItems: [PullItem<T>] = []
     decodedItems.reserveCapacity(items.count)
 
     for itemDTO in items {
       do {
         let jsonData = try JSONSerialization.data(withJSONObject: itemDTO.data.rawValue)
-        let decoded = try JSONDecoder().decode(T.self, from: jsonData)
+        let decoded = try decoder.decode(T.self, from: jsonData)
         decodedItems.append(
           PullItem(
             id: itemDTO.id,
