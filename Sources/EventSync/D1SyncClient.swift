@@ -61,14 +61,16 @@ public actor D1SyncClient {
   // MARK: - Reminder Lists
 
   public func pushLists(
-    _ lists: [ReminderList], idOverrides: [String: String] = [:]
+    _ lists: [ReminderList],
+    idOverrides: [String: String] = [:],
+    lastModifiedByRemoteId: [String: String]
   ) async throws -> PushResult {
-    let now = DateFormatter.eventISO8601.string(from: Date())
     let items = lists.map { list in
-      PushRequestItem(
-        id: idOverrides[list.id] ?? list.id,
+      let remoteId = idOverrides[list.id] ?? list.id
+      return PushRequestItem(
+        id: remoteId,
         data: list,
-        lastModified: now
+        lastModified: lastModifiedByRemoteId[remoteId] ?? DateFormatter.eventISO8601.string(from: Date())
       )
     }
     return try await push(entity: "reminder_lists", items: items)
@@ -107,6 +109,7 @@ public actor D1SyncClient {
     httpRequest.body = .bytes(body)
 
     let response = try await httpClient.execute(httpRequest, timeout: .seconds(30))
+    // Push responses are small acknowledgements (1 MB ceiling)
     let responseData = try await response.body.collect(upTo: 1024 * 1024)
 
     guard response.status == .ok else {
@@ -130,6 +133,7 @@ public actor D1SyncClient {
     httpRequest.headers.add(name: "Authorization", value: "Bearer \(config.apiToken)")
 
     let response = try await httpClient.execute(httpRequest, timeout: .seconds(30))
+    // Pull responses carry full entity payloads (10 MB ceiling)
     let responseData = try await response.body.collect(upTo: 10 * 1024 * 1024)
 
     guard response.status == .ok else {

@@ -38,12 +38,14 @@ public struct PullItem<T: Codable & Sendable>: Sendable {
   public let data: T
   public let deleted: Bool
   public let updatedAt: String
+  public let lastModified: String
 
-  public init(id: String, data: T, deleted: Bool, updatedAt: String) {
+  public init(id: String, data: T, deleted: Bool, updatedAt: String, lastModified: String) {
     self.id = id
     self.data = data
     self.deleted = deleted
     self.updatedAt = updatedAt
+    self.lastModified = lastModified
   }
 }
 
@@ -77,5 +79,85 @@ public struct SyncCursors: Codable, Sendable {
     self.reminders = reminders
     self.calendarEvents = calendarEvents
     self.reminderLists = reminderLists
+  }
+}
+
+// MARK: - Sync State
+
+public struct SyncEntityState: Codable, Sendable, Equatable {
+  public var knownRemoteIds: Set<String>
+  public var lastModifiedByRemoteId: [String: String]
+  public var snapshotsByRemoteId: [String: String]
+
+  public init(
+    knownRemoteIds: Set<String> = [],
+    lastModifiedByRemoteId: [String: String] = [:],
+    snapshotsByRemoteId: [String: String] = [:]
+  ) {
+    self.knownRemoteIds = knownRemoteIds
+    self.lastModifiedByRemoteId = lastModifiedByRemoteId
+    self.snapshotsByRemoteId = snapshotsByRemoteId
+  }
+
+  public func deletionCandidates(currentRemoteIds: Set<String>) -> [String] {
+    knownRemoteIds.subtracting(currentRemoteIds).sorted()
+  }
+
+  public func lastModified<T: Encodable>(
+    for value: T,
+    remoteId: String,
+    fallback: String
+  ) throws -> String {
+    let snapshot = try SyncSnapshotEncoder.encode(value)
+    guard snapshotsByRemoteId[remoteId] == snapshot,
+      let existingLastModified = lastModifiedByRemoteId[remoteId]
+    else {
+      return fallback
+    }
+    return existingLastModified
+  }
+
+  public mutating func recordKnownRemoteId(_ remoteId: String) {
+    knownRemoteIds.insert(remoteId)
+  }
+
+  public mutating func removeRemoteId(_ remoteId: String) {
+    knownRemoteIds.remove(remoteId)
+    lastModifiedByRemoteId.removeValue(forKey: remoteId)
+    snapshotsByRemoteId.removeValue(forKey: remoteId)
+  }
+
+  public mutating func recordSyncedValue<T: Encodable>(
+    _ value: T,
+    remoteId: String,
+    lastModified: String
+  ) throws {
+    recordKnownRemoteId(remoteId)
+    lastModifiedByRemoteId[remoteId] = lastModified
+    snapshotsByRemoteId[remoteId] = try SyncSnapshotEncoder.encode(value)
+  }
+}
+
+public struct SyncState: Codable, Sendable, Equatable {
+  public var reminders: SyncEntityState
+  public var calendarEvents: SyncEntityState
+  public var reminderLists: SyncEntityState
+
+  public init(
+    reminders: SyncEntityState = SyncEntityState(),
+    calendarEvents: SyncEntityState = SyncEntityState(),
+    reminderLists: SyncEntityState = SyncEntityState()
+  ) {
+    self.reminders = reminders
+    self.calendarEvents = calendarEvents
+    self.reminderLists = reminderLists
+  }
+}
+
+enum SyncSnapshotEncoder {
+  static func encode<T: Encodable>(_ value: T) throws -> String {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    return String(decoding: try encoder.encode(value), as: UTF8.self)
   }
 }

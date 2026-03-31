@@ -9,6 +9,28 @@ public enum SyncConfigStore {
       .appendingPathComponent("event-sync")
   }
 
+  /// Acquire an exclusive, non-blocking file lock to prevent concurrent sync operations.
+  /// Returns the file descriptor. Call `releaseLock(_:)` when done.
+  public static func acquireLock() throws -> Int32 {
+    let dir = baseDirectory
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let lockPath = dir.appendingPathComponent(".lock").path
+    let fd = open(lockPath, O_CREAT | O_RDWR, 0o600)
+    guard fd >= 0 else {
+      throw EventCLIError.unknown("Could not create sync lock file")
+    }
+    guard flock(fd, LOCK_EX | LOCK_NB) == 0 else {
+      close(fd)
+      throw EventCLIError.unknown("Another sync operation is already running")
+    }
+    return fd
+  }
+
+  public static func releaseLock(_ fd: Int32) {
+    flock(fd, LOCK_UN)
+    close(fd)
+  }
+
   public static var configPath: String {
     baseDirectory.appendingPathComponent("config.json").path
   }
@@ -19,6 +41,10 @@ public enum SyncConfigStore {
 
   public static var idMappingPath: String {
     baseDirectory.appendingPathComponent("id-mapping.json").path
+  }
+
+  public static var statePath: String {
+    baseDirectory.appendingPathComponent("state.json").path
   }
 
   public static func load() throws -> SyncConfig {
@@ -89,5 +115,28 @@ public enum SyncConfigStore {
     let data = try JSONEncoder().encode(mapping)
     try data.write(to: URL(fileURLWithPath: idMappingPath), options: .atomic)
     try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: idMappingPath)
+  }
+
+  public static func loadState() -> SyncState {
+    guard FileManager.default.fileExists(atPath: statePath) else {
+      return SyncState()
+    }
+    do {
+      let data = try Data(contentsOf: URL(fileURLWithPath: statePath))
+      return try JSONDecoder().decode(SyncState.self, from: data)
+    } catch {
+      print(
+        "Warning: Could not parse \(statePath): \(error.localizedDescription). Starting with empty sync state."
+      )
+      return SyncState()
+    }
+  }
+
+  public static func saveState(_ state: SyncState) throws {
+    let dir = URL(fileURLWithPath: statePath).deletingLastPathComponent()
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let data = try JSONEncoder().encode(state)
+    try data.write(to: URL(fileURLWithPath: statePath), options: .atomic)
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: statePath)
   }
 }

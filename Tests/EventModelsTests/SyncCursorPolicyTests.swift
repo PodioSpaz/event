@@ -39,6 +39,6 @@ final class SyncCursorPolicyTests: XCTestCase {
       hadFailures: true
     )
 
-    XCTAssertEqual(next, "2026-03-27T12:05:00|z")
+    XCTAssertNil(next)
   }
 }

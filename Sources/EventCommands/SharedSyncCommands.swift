@@ -53,7 +53,7 @@ public struct SyncStatusCommand: AsyncParsableCommand {
 
 // MARK: - Pull Summary
 
-public struct PullSummary {
+public struct PullSummary: Codable {
   public let pulled: Int
   public let deleted: Int
 

@@ -44,12 +44,14 @@ struct PullItemDTO: Codable {
   let data: JSONValue
   let deleted: Bool
   let updatedAt: String
+  let lastModified: String
 
   enum CodingKeys: String, CodingKey {
     case id
     case data
     case deleted
     case updatedAt = "updated_at"
+    case lastModified = "last_modified"
   }
 }
 
@@ -70,7 +72,8 @@ enum PullItemDecoder {
             id: itemDTO.id,
             data: decoded,
             deleted: itemDTO.deleted,
-            updatedAt: itemDTO.updatedAt
+            updatedAt: itemDTO.updatedAt,
+            lastModified: itemDTO.lastModified
           )
         )
       } catch {
@@ -116,12 +119,12 @@ enum JSONValue: Codable, Sendable {
       self = .array(array)
     } else if let string = try? container.decode(String.self) {
       self = .string(string)
+    } else if let bool = try? container.decode(Bool.self) {
+      self = .bool(bool)
     } else if let int = try? container.decode(Int.self) {
       self = .int(int)
     } else if let double = try? container.decode(Double.self) {
       self = .double(double)
-    } else if let bool = try? container.decode(Bool.self) {
-      self = .bool(bool)
     } else if container.decodeNil() {
       self = .null
     } else {

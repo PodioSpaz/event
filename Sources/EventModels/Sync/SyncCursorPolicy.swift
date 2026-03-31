@@ -5,9 +5,9 @@ public enum SyncCursorPolicy {
     currentCursor: String?,
     responseCursor: String,
     hadFailures: Bool
-  ) -> String {
+  ) -> String? {
     if hadFailures {
-      return currentCursor ?? responseCursor
+      return currentCursor
     }
     return responseCursor
   }
