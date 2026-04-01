@@ -125,10 +125,7 @@ actor CalendarService {
       ekEvent.notes = notes
     }
 
-    if ekEvent.endDate < ekEvent.startDate {
-      throw EventCLIError.invalidInput(
-        "End date must be on or after start date")
-    }
+    try DateValidator.validateDateRange(start: ekEvent.startDate, end: ekEvent.endDate)
 
     try eventStore.save(ekEvent, span: .thisEvent, commit: true)
     return CalendarEvent(from: ekEvent)
@@ -144,12 +141,15 @@ actor CalendarService {
 
     let ekSpan: EKSpan
     switch span.lowercased() {
+    case "this":
+      ekSpan = .thisEvent
     case "future":
       ekSpan = .futureEvents
     case "all":
       ekSpan = .allEvents
     default:
-      ekSpan = .thisEvent
+      throw EventCLIError.invalidInput(
+        "Invalid span '\(span)'. Must be 'this', 'future', or 'all'.")
     }
 
     try eventStore.remove(ekEvent, span: ekSpan, commit: true)
