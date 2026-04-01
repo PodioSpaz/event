@@ -1,4 +1,5 @@
 import AsyncHTTPClient
+import EventModels
 import Foundation
 import NIOCore
 import NIOFoundationCompat
@@ -14,8 +15,9 @@ public actor D1SyncClient {
     self.httpClient = HTTPClient(eventLoopGroupProvider: .singleton)
   }
 
-  deinit {
-    try? httpClient.syncShutdown()
+  /// Shut down the underlying HTTP client. Call before discarding the client.
+  public func shutdown() async throws {
+    try await httpClient.shutdown()
   }
 
   // MARK: - Reminders
@@ -27,7 +29,7 @@ public actor D1SyncClient {
       PushRequestItem(
         id: idOverrides[reminder.id] ?? reminder.id,
         data: reminder,
-        lastModified: reminder.lastModifiedDate ?? DateFormatter.iso8601.string(from: Date())
+        lastModified: reminder.lastModifiedDate ?? DateFormatter.eventISO8601.string(from: Date())
       )
     }
     return try await push(entity: "reminders", items: items)
@@ -46,7 +48,7 @@ public actor D1SyncClient {
       PushRequestItem(
         id: idOverrides[event.id] ?? event.id,
         data: event,
-        lastModified: event.lastModifiedDate ?? DateFormatter.iso8601.string(from: Date())
+        lastModified: event.lastModifiedDate ?? DateFormatter.eventISO8601.string(from: Date())
       )
     }
     return try await push(entity: "calendar_events", items: items)
@@ -59,14 +61,16 @@ public actor D1SyncClient {
   // MARK: - Reminder Lists
 
   public func pushLists(
-    _ lists: [ReminderList], idOverrides: [String: String] = [:]
+    _ lists: [ReminderList],
+    idOverrides: [String: String] = [:],
+    lastModifiedByRemoteId: [String: String]
   ) async throws -> PushResult {
-    let now = DateFormatter.iso8601.string(from: Date())
     let items = lists.map { list in
-      PushRequestItem(
-        id: idOverrides[list.id] ?? list.id,
+      let remoteId = idOverrides[list.id] ?? list.id
+      return PushRequestItem(
+        id: remoteId,
         data: list,
-        lastModified: now
+        lastModified: lastModifiedByRemoteId[remoteId] ?? DateFormatter.eventISO8601.string(from: Date())
       )
     }
     return try await push(entity: "reminder_lists", items: items)
@@ -105,6 +109,7 @@ public actor D1SyncClient {
     httpRequest.body = .bytes(body)
 
     let response = try await httpClient.execute(httpRequest, timeout: .seconds(30))
+    // Push responses are small acknowledgements (1 MB ceiling)
     let responseData = try await response.body.collect(upTo: 1024 * 1024)
 
     guard response.status == .ok else {
@@ -128,6 +133,7 @@ public actor D1SyncClient {
     httpRequest.headers.add(name: "Authorization", value: "Bearer \(config.apiToken)")
 
     let response = try await httpClient.execute(httpRequest, timeout: .seconds(30))
+    // Pull responses carry full entity payloads (10 MB ceiling)
     let responseData = try await response.body.collect(upTo: 10 * 1024 * 1024)
 
     guard response.status == .ok else {
@@ -136,22 +142,7 @@ public actor D1SyncClient {
     }
 
     let dto = try JSONDecoder().decode(PullResponseDTO.self, from: Data(buffer: responseData))
-
-    let items: [PullItem<T>] = dto.items.compactMap { itemDTO in
-      do {
-        let jsonData = try JSONSerialization.data(withJSONObject: itemDTO.data.value)
-        let decoded = try JSONDecoder().decode(T.self, from: jsonData)
-        return PullItem(
-          id: itemDTO.id,
-          data: decoded,
-          deleted: itemDTO.deleted,
-          updatedAt: itemDTO.updatedAt
-        )
-      } catch {
-        print("Warning: Failed to decode \(entity) item \(itemDTO.id): \(error)")
-        return nil
-      }
-    }
+    let items: [PullItem<T>] = try PullItemDecoder.decodeItems(from: dto.items, entity: entity)
 
     return PullResponse(items: items, cursor: dto.cursor, hasMore: dto.hasMore)
   }
@@ -163,9 +154,8 @@ public actor D1SyncClient {
     httpRequest.headers.add(name: "Authorization", value: "Bearer \(config.apiToken)")
 
     let response = try await httpClient.execute(httpRequest, timeout: .seconds(30))
-    let responseData = try await response.body.collect(upTo: 1024 * 1024)
-
     guard response.status == .ok else {
+      let responseData = try await response.body.collect(upTo: 1024 * 1024)
       let errorBody = String(buffer: responseData)
       throw EventCLIError.unknown("Delete failed (\(response.status.code)): \(errorBody)")
     }

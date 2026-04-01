@@ -1,4 +1,4 @@
-# event ![Swift](https://img.shields.io/badge/Swift-5.9+-F05138) ![macOS](https://img.shields.io/badge/macOS-15.0+-000000)
+# event ![Swift](https://img.shields.io/badge/Swift-5.9+-F05138) ![macOS](https://img.shields.io/badge/macOS-14.0+-000000)
 
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE) [![Twitter Follow](https://img.shields.io/twitter/follow/FradSer?style=social)](https://twitter.com/FradSer)
 
@@ -18,7 +18,7 @@ A pure Swift CLI tool for managing Apple Reminders and Calendar on macOS.
 
 ## Requirements
 
-- macOS 15.0 or later
+- macOS 14.0 or later
 - Swift 5.9 or later
 
 ## Installation

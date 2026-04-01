@@ -1,4 +1,4 @@
-# event ![Swift](https://img.shields.io/badge/Swift-5.9+-F05138) ![macOS](https://img.shields.io/badge/macOS-15.0+-000000)
+# event ![Swift](https://img.shields.io/badge/Swift-5.9+-F05138) ![macOS](https://img.shields.io/badge/macOS-14.0+-000000)
 
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE) [![Twitter Follow](https://img.shields.io/twitter/follow/FradSer?style=social)](https://twitter.com/FradSer)
 
@@ -18,7 +18,7 @@
 
 ## 系统要求
 
-- macOS 15.0 或更高版本
+- macOS 14.0 或更高版本
 - Swift 5.9 或更高版本
 
 ## 安装方法

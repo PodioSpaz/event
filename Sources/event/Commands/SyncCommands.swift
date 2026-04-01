@@ -3,6 +3,17 @@ import EventCommands
 import EventModels
 import Foundation
 
+// MARK: - Sync Entity Type
+
+enum SyncEntityType: String, ExpressibleByArgument, CaseIterable {
+  case reminders
+  case calendar
+  case lists
+  case all
+
+  static let fullPullOrder: [SyncEntityType] = [.lists, .reminders, .calendar]
+}
+
 // MARK: - Sync Commands
 
 struct SyncCommands: AsyncParsableCommand {
@@ -20,32 +31,59 @@ struct SyncCommands: AsyncParsableCommand {
     )
 
     @Option(help: "Type to sync: reminders, calendar, lists, all")
-    var type: String = "all"
+    var type: SyncEntityType = .all
+
+    @Flag(help: "Output in JSON format")
+    var json = false
 
     func run() async throws {
+      let lockFd = try SyncConfigStore.acquireLock()
+      defer { SyncConfigStore.releaseLock(lockFd) }
+
       let config = try SyncConfigStore.load()
       let service = SyncService(config: config)
+      do {
+        var output: [String: PushResult] = [:]
+        switch type {
+        case .reminders:
+          output["reminders"] = try await service.pushReminders()
+        case .calendar:
+          output["calendarEvents"] = try await service.pushEvents()
+        case .lists:
+          output["reminderLists"] = try await service.pushLists()
+        case .all:
+          output["reminders"] = try await service.pushReminders()
+          output["calendarEvents"] = try await service.pushEvents()
+          output["reminderLists"] = try await service.pushLists()
+        }
+        try await service.shutdown()
+        printPushOutput(output)
+      } catch {
+        try? await service.shutdown()
+        throw error
+      }
+    }
 
-      switch type.lowercased() {
-      case "reminders":
-        let result = try await service.pushReminders()
-        print("Reminders: synced \(result.synced), skipped \(result.skipped)")
-      case "calendar":
-        let result = try await service.pushEvents()
-        print("Calendar events: synced \(result.synced), skipped \(result.skipped)")
-      case "lists":
-        let result = try await service.pushLists()
-        print("Reminder lists: synced \(result.synced), skipped \(result.skipped)")
-      case "all":
-        let r = try await service.pushReminders()
-        let c = try await service.pushEvents()
-        let l = try await service.pushLists()
-        print("Reminders: synced \(r.synced), skipped \(r.skipped)")
-        print("Calendar events: synced \(c.synced), skipped \(c.skipped)")
-        print("Reminder lists: synced \(l.synced), skipped \(l.skipped)")
-      default:
-        throw EventCLIError.invalidInput(
-          "Unknown type '\(type)'. Use: reminders, calendar, lists, all")
+    private func printPushOutput(_ output: [String: PushResult]) {
+      if json {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        if let data = try? encoder.encode(output),
+          let str = String(data: data, encoding: .utf8)
+        {
+          print(str)
+        }
+      } else {
+        let labels: [(String, String)] = [
+          ("reminders", "Reminders"),
+          ("calendarEvents", "Calendar events"),
+          ("reminderLists", "Reminder lists"),
+        ]
+        for (key, label) in labels {
+          if let result = output[key] {
+            print("\(label): synced \(result.synced), skipped \(result.skipped)")
+          }
+        }
       }
     }
   }
@@ -58,40 +96,69 @@ struct SyncCommands: AsyncParsableCommand {
     )
 
     @Option(help: "Type to sync: reminders, calendar, lists, all")
-    var type: String = "all"
+    var type: SyncEntityType = .all
 
     @Flag(help: "Output in JSON format")
     var json = false
 
     func run() async throws {
+      let lockFd = try SyncConfigStore.acquireLock()
+      defer { SyncConfigStore.releaseLock(lockFd) }
+
       let config = try SyncConfigStore.load()
       let service = SyncService(config: config)
-
-      switch type.lowercased() {
-      case "reminders":
-        let summary = try await service.pullReminders()
-        printPullSummary("Reminders", summary: summary)
-      case "calendar":
-        let summary = try await service.pullEvents()
-        printPullSummary("Calendar events", summary: summary)
-      case "lists":
-        let summary = try await service.pullLists()
-        printPullSummary("Reminder lists", summary: summary)
-      case "all":
-        let r = try await service.pullReminders()
-        let c = try await service.pullEvents()
-        let l = try await service.pullLists()
-        printPullSummary("Reminders", summary: r)
-        printPullSummary("Calendar events", summary: c)
-        printPullSummary("Reminder lists", summary: l)
-      default:
-        throw EventCLIError.invalidInput(
-          "Unknown type '\(type)'. Use: reminders, calendar, lists, all")
+      do {
+        var output: [String: PullSummary] = [:]
+        switch type {
+        case .reminders:
+          output["reminders"] = try await service.pullReminders()
+        case .calendar:
+          output["calendarEvents"] = try await service.pullEvents()
+        case .lists:
+          output["reminderLists"] = try await service.pullLists()
+        case .all:
+          for entity in SyncEntityType.fullPullOrder {
+            switch entity {
+            case .lists:
+              output["reminderLists"] = try await service.pullLists()
+            case .reminders:
+              output["reminders"] = try await service.pullReminders()
+            case .calendar:
+              output["calendarEvents"] = try await service.pullEvents()
+            case .all:
+              break
+            }
+          }
+        }
+        try await service.shutdown()
+        printPullOutput(output)
+      } catch {
+        try? await service.shutdown()
+        throw error
       }
     }
 
-    private func printPullSummary(_ label: String, summary: PullSummary) {
-      print("\(label): pulled \(summary.pulled), deleted \(summary.deleted)")
+    private func printPullOutput(_ output: [String: PullSummary]) {
+      if json {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        if let data = try? encoder.encode(output),
+          let str = String(data: data, encoding: .utf8)
+        {
+          print(str)
+        }
+      } else {
+        let labels: [(String, String)] = [
+          ("reminderLists", "Reminder lists"),
+          ("reminders", "Reminders"),
+          ("calendarEvents", "Calendar events"),
+        ]
+        for (key, label) in labels {
+          if let summary = output[key] {
+            print("\(label): pulled \(summary.pulled), deleted \(summary.deleted)")
+          }
+        }
+      }
     }
   }
 }

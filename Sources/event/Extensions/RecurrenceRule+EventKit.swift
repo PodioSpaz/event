@@ -13,10 +13,10 @@ extension RecurrenceRule {
     @unknown default: frequency = "unknown"
     }
 
+    let weekdaySymbols = [
+      "", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+    ]
     let daysOfWeek = ekRule.daysOfTheWeek?.compactMap { dayOfWeek -> String? in
-      let weekdaySymbols = [
-        "", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
-      ]
       let index = dayOfWeek.dayOfTheWeek.rawValue
       guard index >= 0, index < weekdaySymbols.count else { return nil }
       return weekdaySymbols[index]

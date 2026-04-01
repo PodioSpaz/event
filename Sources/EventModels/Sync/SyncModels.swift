@@ -25,6 +25,12 @@ public struct PullResponse<T: Codable & Sendable>: Sendable {
   public let items: [PullItem<T>]
   public let cursor: String
   public let hasMore: Bool
+
+  public init(items: [PullItem<T>], cursor: String, hasMore: Bool) {
+    self.items = items
+    self.cursor = cursor
+    self.hasMore = hasMore
+  }
 }
 
 public struct PullItem<T: Codable & Sendable>: Sendable {
@@ -32,6 +38,15 @@ public struct PullItem<T: Codable & Sendable>: Sendable {
   public let data: T
   public let deleted: Bool
   public let updatedAt: String
+  public let lastModified: String
+
+  public init(id: String, data: T, deleted: Bool, updatedAt: String, lastModified: String) {
+    self.id = id
+    self.data = data
+    self.deleted = deleted
+    self.updatedAt = updatedAt
+    self.lastModified = lastModified
+  }
 }
 
 // MARK: - Sync ID Mapping
@@ -67,111 +82,82 @@ public struct SyncCursors: Codable, Sendable {
   }
 }
 
-// MARK: - Push Request Models
+// MARK: - Sync State
 
-struct PushRequestItem<T: Codable>: Codable {
-  let id: String
-  let data: T
-  let lastModified: String
+public struct SyncEntityState: Codable, Sendable, Equatable {
+  public var knownRemoteIds: Set<String>
+  public var lastModifiedByRemoteId: [String: String]
+  public var snapshotsByRemoteId: [String: String]
 
-  enum CodingKeys: String, CodingKey {
-    case id
-    case data
-    case lastModified = "last_modified"
-  }
-}
-
-struct PushRequest<T: Codable>: Codable {
-  let deviceId: String
-  let items: [PushRequestItem<T>]
-
-  enum CodingKeys: String, CodingKey {
-    case deviceId = "device_id"
-    case items
-  }
-}
-
-// MARK: - Pull Response Models
-
-struct PullResponseDTO: Codable {
-  let items: [PullItemDTO]
-  let cursor: String
-  let hasMore: Bool
-
-  enum CodingKeys: String, CodingKey {
-    case items
-    case cursor
-    case hasMore = "has_more"
-  }
-}
-
-struct PullItemDTO: Codable {
-  let id: String
-  let data: AnyCodable
-  let deleted: Bool
-  let updatedAt: String
-
-  enum CodingKeys: String, CodingKey {
-    case id
-    case data
-    case deleted
-    case updatedAt = "updated_at"
-  }
-}
-
-// MARK: - AnyCodable
-
-struct AnyCodable: Codable {
-  let value: Any
-
-  init(_ value: Any) {
-    self.value = value
+  public init(
+    knownRemoteIds: Set<String> = [],
+    lastModifiedByRemoteId: [String: String] = [:],
+    snapshotsByRemoteId: [String: String] = [:]
+  ) {
+    self.knownRemoteIds = knownRemoteIds
+    self.lastModifiedByRemoteId = lastModifiedByRemoteId
+    self.snapshotsByRemoteId = snapshotsByRemoteId
   }
 
-  init(from decoder: Decoder) throws {
-    let container = try decoder.singleValueContainer()
-    if let dict = try? container.decode([String: AnyCodable].self) {
-      value = dict.mapValues { $0.value }
-    } else if let array = try? container.decode([AnyCodable].self) {
-      value = array.map { $0.value }
-    } else if let string = try? container.decode(String.self) {
-      value = string
-    } else if let int = try? container.decode(Int.self) {
-      value = int
-    } else if let double = try? container.decode(Double.self) {
-      value = double
-    } else if let bool = try? container.decode(Bool.self) {
-      value = bool
-    } else {
-      value = ()
+  public func deletionCandidates(currentRemoteIds: Set<String>) -> [String] {
+    knownRemoteIds.subtracting(currentRemoteIds).sorted()
+  }
+
+  public func lastModified<T: Encodable>(
+    for value: T,
+    remoteId: String,
+    fallback: String
+  ) throws -> String {
+    let snapshot = try SyncSnapshotEncoder.encode(value)
+    guard snapshotsByRemoteId[remoteId] == snapshot,
+      let existingLastModified = lastModifiedByRemoteId[remoteId]
+    else {
+      return fallback
     }
+    return existingLastModified
   }
 
-  func encode(to encoder: Encoder) throws {
-    var container = encoder.singleValueContainer()
-    switch value {
-    case let string as String:
-      try container.encode(string)
-    case let int as Int:
-      try container.encode(int)
-    case let double as Double:
-      try container.encode(double)
-    case let bool as Bool:
-      try container.encode(bool)
-    case let array as [Any]:
-      try container.encode(array.map { AnyCodable($0) })
-    case let dict as [String: Any]:
-      try container.encode(dict.mapValues { AnyCodable($0) })
-    case is Void, is ():
-      try container.encodeNil()
-    default:
-      throw EncodingError.invalidValue(
-        value,
-        EncodingError.Context(
-          codingPath: container.codingPath,
-          debugDescription: "AnyCodable cannot encode value of type \(type(of: value))"
-        )
-      )
-    }
+  public mutating func recordKnownRemoteId(_ remoteId: String) {
+    knownRemoteIds.insert(remoteId)
+  }
+
+  public mutating func removeRemoteId(_ remoteId: String) {
+    knownRemoteIds.remove(remoteId)
+    lastModifiedByRemoteId.removeValue(forKey: remoteId)
+    snapshotsByRemoteId.removeValue(forKey: remoteId)
+  }
+
+  public mutating func recordSyncedValue<T: Encodable>(
+    _ value: T,
+    remoteId: String,
+    lastModified: String
+  ) throws {
+    recordKnownRemoteId(remoteId)
+    lastModifiedByRemoteId[remoteId] = lastModified
+    snapshotsByRemoteId[remoteId] = try SyncSnapshotEncoder.encode(value)
+  }
+}
+
+public struct SyncState: Codable, Sendable, Equatable {
+  public var reminders: SyncEntityState
+  public var calendarEvents: SyncEntityState
+  public var reminderLists: SyncEntityState
+
+  public init(
+    reminders: SyncEntityState = SyncEntityState(),
+    calendarEvents: SyncEntityState = SyncEntityState(),
+    reminderLists: SyncEntityState = SyncEntityState()
+  ) {
+    self.reminders = reminders
+    self.calendarEvents = calendarEvents
+    self.reminderLists = reminderLists
+  }
+}
+
+enum SyncSnapshotEncoder {
+  static func encode<T: Encodable>(_ value: T) throws -> String {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    return String(decoding: try encoder.encode(value), as: UTF8.self)
   }
 }

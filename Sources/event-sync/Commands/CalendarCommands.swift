@@ -1,5 +1,6 @@
 import ArgumentParser
 import EventModels
+import EventSync
 import Foundation
 
 // MARK: - Calendar Commands (Linux / D1-only)
@@ -24,19 +25,25 @@ struct CalendarCommands: AsyncParsableCommand {
     func run() async throws {
       let config = try SyncConfigStore.load()
       let client = D1SyncClient(config: config)
-      var allEvents: [CalendarEvent] = []
-      var cursor: String? = nil
-      var hasMore = true
+      do {
+        var allEvents: [CalendarEvent] = []
+        var cursor: String? = nil
+        var hasMore = true
 
-      while hasMore {
-        let response = try await client.pullEvents(cursor: cursor)
-        allEvents += response.items.filter { !$0.deleted }.map { $0.data }
-        cursor = response.cursor
-        hasMore = response.hasMore
+        while hasMore {
+          let response = try await client.pullEvents(cursor: cursor)
+          allEvents += response.items.filter { !$0.deleted }.map { $0.data }
+          cursor = response.cursor
+          hasMore = response.hasMore
+        }
+
+        let formatter: OutputFormatter = json ? JSONFormatter() : MarkdownFormatter()
+        print(formatter.format(allEvents))
+        try await client.shutdown()
+      } catch {
+        try? await client.shutdown()
+        throw error
       }
-
-      let formatter: OutputFormatter = json ? JSONFormatter() : MarkdownFormatter()
-      print(formatter.format(allEvents))
     }
   }
 }
