@@ -6,9 +6,9 @@ import XCTest
 
 final class ReminderTests: XCTestCase {
 
-  func testReminderInitialization() {
-    let store = EKEventStore()
+  private let store = EKEventStore()
 
+  func testReminderInitialization() {
     let ekReminder = EKReminder(eventStore: store)
     ekReminder.title = "Buy Milk"
     ekReminder.isCompleted = true
@@ -24,10 +24,9 @@ final class ReminderTests: XCTestCase {
   }
 
   func testReminderWithNoNotesAndPriority() {
-    let store = EKEventStore()
     let ekReminder = EKReminder(eventStore: store)
     ekReminder.title = "Simple Task"
-    ekReminder.priority = 0  // No priority
+    ekReminder.priority = 0
 
     let reminder = Reminder(from: ekReminder)
 

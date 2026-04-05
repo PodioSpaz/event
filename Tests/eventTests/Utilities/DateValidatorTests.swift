@@ -23,16 +23,11 @@ final class DateValidatorTests: XCTestCase {
   }
 
   func testValidateDateTimeAutoCorrectionRejection() {
-    // February doesn't have 30 days
-    let dateString = "2026-02-30 14:30:00"
-    do {
-      let _ = try DateValidator.validateDateTime(dateString)
-      // It might throw invalidDate for bad format or invalidDate for auto-correction, both are fine
-      XCTFail("Expected error, but didn't throw")
-    } catch EventCLIError.invalidDate(_) {
-      // Success
-    } catch {
-      XCTFail("Expected invalidDate error, got: \(error)")
+    XCTAssertThrowsError(try DateValidator.validateDateTime("2026-02-30 14:30:00")) { error in
+      guard case EventCLIError.invalidDate = error else {
+        XCTFail("Expected invalidDate error, got: \(error)")
+        return
+      }
     }
   }
 
@@ -54,14 +49,11 @@ final class DateValidatorTests: XCTestCase {
   }
 
   func testValidateDateAutoCorrectionRejection() {
-    let dateString = "2026-04-31"  // April only has 30 days
-    do {
-      let _ = try DateValidator.validateDate(dateString)
-      XCTFail("Expected error, but didn't throw")
-    } catch EventCLIError.invalidDate(_) {
-      // Success
-    } catch {
-      XCTFail("Expected invalidDate error, got: \(error)")
+    XCTAssertThrowsError(try DateValidator.validateDate("2026-04-31")) { error in
+      guard case EventCLIError.invalidDate = error else {
+        XCTFail("Expected invalidDate error, got: \(error)")
+        return
+      }
     }
   }
 
@@ -109,35 +101,28 @@ final class DateValidatorTests: XCTestCase {
   }
 
   func testValidateReasonableDateTooEarly() {
-    do {
-      // Need a valid validatable date that is out of range. 1899-12-31 parses fine,
-      // but might format back slightly differently depending on timezone in the formatter.
-      // Let's use Date components directly if we're just testing the range validation.
-      let formatter = DateFormatter()
-      formatter.dateFormat = "yyyy-MM-dd"
-      formatter.timeZone = TimeZone(identifier: "UTC")  // Fix timezone for consistent test
-      let date = formatter.date(from: "1899-12-31")!
-      try DateValidator.validateReasonableDate(date)
-      XCTFail("Expected error, but didn't throw")
-    } catch EventCLIError.dateOutOfRange(_) {
-      // Success
-    } catch {
-      XCTFail("Expected dateOutOfRange error, got: \(error)")
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd"
+    formatter.timeZone = TimeZone(identifier: "UTC")
+    let date = formatter.date(from: "1899-12-31")!
+    XCTAssertThrowsError(try DateValidator.validateReasonableDate(date)) { error in
+      guard case EventCLIError.dateOutOfRange = error else {
+        XCTFail("Expected dateOutOfRange error, got: \(error)")
+        return
+      }
     }
   }
 
   func testValidateReasonableDateTooLate() {
-    do {
-      let formatter = DateFormatter()
-      formatter.dateFormat = "yyyy-MM-dd"
-      formatter.timeZone = TimeZone(identifier: "UTC")  // Fix timezone for consistent test
-      let date = formatter.date(from: "2101-01-01")!
-      try DateValidator.validateReasonableDate(date)
-      XCTFail("Expected error, but didn't throw")
-    } catch EventCLIError.dateOutOfRange(_) {
-      // Success
-    } catch {
-      XCTFail("Expected dateOutOfRange error, got: \(error)")
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd"
+    formatter.timeZone = TimeZone(identifier: "UTC")
+    let date = formatter.date(from: "2101-01-01")!
+    XCTAssertThrowsError(try DateValidator.validateReasonableDate(date)) { error in
+      guard case EventCLIError.dateOutOfRange = error else {
+        XCTFail("Expected dateOutOfRange error, got: \(error)")
+        return
+      }
     }
   }
 }

@@ -6,11 +6,10 @@ import XCTest
 
 final class FormatterTests: XCTestCase {
 
-  // MARK: - MarkdownFormatter Tests
+  private let store = EKEventStore()
 
   func testMarkdownFormatterReminder() {
     let formatter = MarkdownFormatter()
-    let store = EKEventStore()
     let ekReminder = EKReminder(eventStore: store)
     ekReminder.title = "Buy Milk"
     ekReminder.isCompleted = true

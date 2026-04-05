@@ -5,7 +5,7 @@ import XCTest
 
 final class ShortcutPayloadTests: XCTestCase {
 
-  func testShortcutReminderPayloadBasic() throws {
+  func testShortcutReminderPayloadBasic() {
     let payload = ShortcutReminderPayload(
       title: "Test Reminder",
       listName: "Work",
@@ -23,7 +23,7 @@ final class ShortcutPayloadTests: XCTestCase {
     XCTAssertNil(payload.parentTitle)
   }
 
-  func testShortcutReminderPayloadWithParent() throws {
+  func testShortcutReminderPayloadWithParent() {
     let payload = ShortcutReminderPayload(
       title: "Subtask",
       listName: nil,
@@ -48,17 +48,13 @@ final class ShortcutPayloadTests: XCTestCase {
       parentTitle: nil
     )
 
-    let encoder = JSONEncoder()
-    let data = try encoder.encode(payload)
-
-    XCTAssertFalse(data.isEmpty)
-
+    let data = try JSONEncoder().encode(payload)
     let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
     XCTAssertEqual(json?["title"] as? String, "Test")
     XCTAssertEqual(json?["listName"] as? String, "Personal")
   }
 
-  func testAdvancedReminderEditPayloadBasic() throws {
+  func testAdvancedReminderEditPayloadBasic() {
     let payload = AdvancedReminderEditPayload(
       title: "Edit Test",
       list: "Work",
@@ -85,11 +81,7 @@ final class ShortcutPayloadTests: XCTestCase {
       isFlagged: nil
     )
 
-    let encoder = JSONEncoder()
-    let data = try encoder.encode(payload)
-
-    XCTAssertFalse(data.isEmpty)
-
+    let data = try JSONEncoder().encode(payload)
     let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
     XCTAssertEqual(json?["title"] as? String, "Test")
     XCTAssertEqual(json?["tags"] as? String, "tag1,tag2")

@@ -6,8 +6,9 @@ import XCTest
 
 final class ReminderListTests: XCTestCase {
 
+  private let store = EKEventStore()
+
   func testReminderListInitialization() {
-    let store = EKEventStore()
     let ekCalendar = EKCalendar(for: .reminder, eventStore: store)
     ekCalendar.title = "My List"
 
@@ -18,7 +19,6 @@ final class ReminderListTests: XCTestCase {
   }
 
   func testReminderListImmutable() {
-    let store = EKEventStore()
     let ekCalendar = EKCalendar(for: .reminder, eventStore: store)
     ekCalendar.title = "Immutable List"
 
@@ -28,17 +28,13 @@ final class ReminderListTests: XCTestCase {
   }
 
   func testReminderListCodable() throws {
-    let store = EKEventStore()
     let ekCalendar = EKCalendar(for: .reminder, eventStore: store)
     ekCalendar.title = "Test List"
 
     let reminderList = ReminderList(from: ekCalendar)
 
-    let encoder = JSONEncoder()
-    let data = try encoder.encode(reminderList)
-
-    let decoder = JSONDecoder()
-    let decoded = try decoder.decode(ReminderList.self, from: data)
+    let data = try JSONEncoder().encode(reminderList)
+    let decoded = try JSONDecoder().decode(ReminderList.self, from: data)
 
     XCTAssertEqual(decoded.id, reminderList.id)
     XCTAssertEqual(decoded.title, reminderList.title)

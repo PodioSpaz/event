@@ -54,7 +54,7 @@ final class DateExtensionsTests: XCTestCase {
     // This is tricky to test perfectly because it depends on the local timezone where the test runs.
     // We'll just verify the format string structure
     let eventDateTimeStr = DateFormatter.eventDateTime.string(from: date)
-    XCTAssertTrue(eventDateTimeStr.contains("2026") || eventDateTimeStr.contains("2026"))  // Timezone might shift day
+    XCTAssertTrue(eventDateTimeStr.contains("2026"))
     XCTAssertTrue(eventDateTimeStr.count == 19)  // "yyyy-MM-dd HH:mm:ss" is 19 chars
 
     let eventDateStr = DateFormatter.eventDate.string(from: date)
