@@ -120,7 +120,7 @@ public enum SyncConfigStore {
     do {
       return try JSONDecoder().decode(T.self, from: data)
     } catch {
-      print("Warning: Could not parse \(path): \(error.localizedDescription)")
+      fputs("Warning: Could not parse \(path): \(error.localizedDescription)\n", stderr)
       return defaultValue
     }
   }

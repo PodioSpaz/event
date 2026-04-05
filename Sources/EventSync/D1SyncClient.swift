@@ -70,7 +70,8 @@ public actor D1SyncClient {
       return PushRequestItem(
         id: remoteId,
         data: list,
-        lastModified: lastModifiedByRemoteId[remoteId] ?? DateFormatter.eventISO8601.string(from: Date())
+        lastModified: lastModifiedByRemoteId[remoteId]
+          ?? DateFormatter.eventISO8601.string(from: Date())
       )
     }
     return try await push(entity: "reminder_lists", items: items)
@@ -78,6 +79,35 @@ public actor D1SyncClient {
 
   public func pullLists(cursor: String?) async throws -> PullResponse<ReminderList> {
     return try await pull(entity: "reminder_lists", cursor: cursor)
+  }
+
+  // MARK: - Pull All (convenience for paginated reads)
+
+  public func pullAllReminders() async throws -> [Reminder] {
+    try await pullAll { cursor in try await self.pullReminders(cursor: cursor) }
+  }
+
+  public func pullAllEvents() async throws -> [CalendarEvent] {
+    try await pullAll { cursor in try await self.pullEvents(cursor: cursor) }
+  }
+
+  public func pullAllLists() async throws -> [ReminderList] {
+    try await pullAll { cursor in try await self.pullLists(cursor: cursor) }
+  }
+
+  private func pullAll<T: Codable & Sendable>(
+    fetch: (String?) async throws -> PullResponse<T>
+  ) async throws -> [T] {
+    var all: [T] = []
+    var cursor: String? = nil
+    var hasMore = true
+    while hasMore {
+      let response = try await fetch(cursor)
+      all += response.items.filter { !$0.deleted }.map { $0.data }
+      cursor = response.cursor
+      hasMore = response.hasMore
+    }
+    return all
   }
 
   // MARK: - Delete

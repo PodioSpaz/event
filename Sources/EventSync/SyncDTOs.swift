@@ -41,7 +41,7 @@ struct PullResponseDTO: Codable {
 
 struct PullItemDTO: Codable {
   let id: String
-  let data: JSONValue
+  let data: RawJSON
   let deleted: Bool
   let updatedAt: String
   let lastModified: String
@@ -66,8 +66,7 @@ enum PullItemDecoder {
 
     for itemDTO in items {
       do {
-        let jsonData = try JSONSerialization.data(withJSONObject: itemDTO.data.rawValue)
-        let decoded = try decoder.decode(T.self, from: jsonData)
+        let decoded = try decoder.decode(T.self, from: itemDTO.data.bytes)
         decodedItems.append(
           PullItem(
             id: itemDTO.id,
@@ -88,9 +87,31 @@ enum PullItemDecoder {
   }
 }
 
+// MARK: - RawJSON (preserves original bytes, avoids double-serialization)
+
+struct RawJSON: Codable, Sendable {
+  let bytes: Data
+
+  init(bytes: Data) {
+    self.bytes = bytes
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    let value = try container.decode(JSONValue.self)
+    bytes = try JSONSerialization.data(withJSONObject: value.rawValue)
+  }
+
+  func encode(to encoder: Encoder) throws {
+    let value = try JSONDecoder().decode(JSONValue.self, from: bytes)
+    var container = encoder.singleValueContainer()
+    try container.encode(value)
+  }
+}
+
 // MARK: - JSONValue (Sendable replacement for AnyCodable)
 
-enum JSONValue: Codable, Sendable {
+enum JSONValue: Codable, Sendable, Equatable {
   case string(String)
   case int(Int)
   case double(Double)

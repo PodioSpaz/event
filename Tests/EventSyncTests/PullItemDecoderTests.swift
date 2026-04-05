@@ -1,4 +1,5 @@
 import EventModels
+import Foundation
 import XCTest
 
 @testable import EventSync
@@ -8,22 +9,22 @@ private struct ReminderPayload: Codable, Equatable {
 }
 
 final class PullItemDecoderTests: XCTestCase {
+  private func makeDTO(id: String, json: [String: Any], deleted: Bool = false) throws -> PullItemDTO
+  {
+    let data = try JSONSerialization.data(withJSONObject: json)
+    return PullItemDTO(
+      id: id,
+      data: RawJSON(bytes: data),
+      deleted: deleted,
+      updatedAt: "2026-03-27T12:00:00Z",
+      lastModified: "2026-03-27T11:59:00Z"
+    )
+  }
+
   func testDecodeItemsSucceedsWithValidData() throws {
     let items = [
-      PullItemDTO(
-        id: "r1",
-        data: .object(["title": .string("Buy milk")]),
-        deleted: false,
-        updatedAt: "2026-03-27T12:00:00Z",
-        lastModified: "2026-03-27T11:59:00Z"
-      ),
-      PullItemDTO(
-        id: "r2",
-        data: .object(["title": .string("Walk dog")]),
-        deleted: true,
-        updatedAt: "2026-03-27T13:00:00Z",
-        lastModified: "2026-03-27T12:58:00Z"
-      ),
+      try makeDTO(id: "r1", json: ["title": "Buy milk"]),
+      try makeDTO(id: "r2", json: ["title": "Walk dog"], deleted: true),
     ]
 
     let decoded: [PullItem<ReminderPayload>] = try PullItemDecoder.decodeItems(
@@ -39,20 +40,8 @@ final class PullItemDecoderTests: XCTestCase {
 
   func testDecodeItemsThrowsWhenAnyItemIsMalformed() throws {
     let items = [
-      PullItemDTO(
-        id: "r1",
-        data: .object(["title": .string("ok")]),
-        deleted: false,
-        updatedAt: "2026-03-27T12:00:00Z",
-        lastModified: "2026-03-27T11:59:00Z"
-      ),
-      PullItemDTO(
-        id: "r2",
-        data: .object(["wrong": .string("shape")]),
-        deleted: false,
-        updatedAt: "2026-03-27T12:01:00Z",
-        lastModified: "2026-03-27T12:00:30Z"
-      ),
+      try makeDTO(id: "r1", json: ["title": "ok"]),
+      try makeDTO(id: "r2", json: ["wrong": "shape"]),
     ]
 
     XCTAssertThrowsError(

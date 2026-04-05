@@ -67,18 +67,3 @@ final class JSONValueTests: XCTestCase {
     XCTAssertEqual(null, .null)
   }
 }
-
-extension JSONValue: Equatable {
-  public static func == (lhs: JSONValue, rhs: JSONValue) -> Bool {
-    switch (lhs, rhs) {
-    case (.string(let a), .string(let b)): return a == b
-    case (.int(let a), .int(let b)): return a == b
-    case (.double(let a), .double(let b)): return a == b
-    case (.bool(let a), .bool(let b)): return a == b
-    case (.null, .null): return true
-    case (.array(let a), .array(let b)): return a == b
-    case (.object(let a), .object(let b)): return a == b
-    default: return false
-    }
-  }
-}

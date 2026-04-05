@@ -32,7 +32,7 @@ final class SyncCursorPolicyTests: XCTestCase {
     XCTAssertEqual(next, "2026-03-27T12:05:00|z")
   }
 
-  func testNextCursorFallsBackToResponseWhenCurrentIsNilWithFailures() {
+  func testNextCursorStaysNilWhenCurrentIsNilWithFailures() {
     let next = SyncCursorPolicy.nextCursor(
       currentCursor: nil,
       responseCursor: "2026-03-27T12:05:00|z",
