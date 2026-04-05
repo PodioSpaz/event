@@ -26,7 +26,7 @@ extension Reminder {
       id: ekReminder.calendarItemIdentifier,
       title: ekReminder.title ?? "",
       isCompleted: ekReminder.isCompleted,
-      isFlagged: ekReminder.isFlagged,
+      isFlagged: false,  // EKReminder has no isFlagged property
       list: ekReminder.calendar?.title ?? "Unknown",
       notes: ekReminder.notes,
       url: ekReminder.url?.absoluteString,

@@ -91,7 +91,8 @@ struct RemindersCommands: AsyncParsableCommand {
           locationTrigger: nil
         )
 
-        let result = try await client.pushReminders([reminder])
+        let result = try await client.pushReminders(
+          [reminder], lastModifiedByRemoteId: [reminder.id: now])
         if result.synced > 0 {
           let formatter: OutputFormatter = json ? JSONFormatter() : MarkdownFormatter()
           print(formatter.format(reminder))

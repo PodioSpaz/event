@@ -22,9 +22,7 @@ const MAX_BATCH_SIZE = 500;
 // Hardcoded SQL per entity to avoid any table-name injection risk.
 // Each key maps to the full set of prepared statements needed.
 type EntitySQL = {
-  selectLastModified: string;
-  insert: string;
-  update: string;
+  upsert: string;
   selectPage: string;
   softDelete: string;
   purgeDeleted: string;
@@ -32,41 +30,44 @@ type EntitySQL = {
 
 const ENTITY_SQL: Record<string, EntitySQL> = {
   reminders: {
-    selectLastModified: "SELECT last_modified FROM reminders WHERE id = ?",
-    insert:
-      "INSERT INTO reminders (id, data, last_modified, updated_at, source_device) VALUES (?, ?, ?, datetime('now'), ?)",
-    update:
-      "UPDATE reminders SET data = ?, last_modified = ?, deleted = 0, updated_at = datetime('now'), source_device = ? WHERE id = ?",
+    upsert: `INSERT INTO reminders (id, data, last_modified, updated_at, source_device)
+      VALUES (?1, ?2, ?3, datetime('now'), ?4)
+      ON CONFLICT(id) DO UPDATE SET
+        data = excluded.data, last_modified = excluded.last_modified,
+        deleted = 0, updated_at = datetime('now'), source_device = excluded.source_device
+      WHERE reminders.last_modified <= excluded.last_modified`,
     selectPage:
       "SELECT id, data, deleted, updated_at, last_modified FROM reminders WHERE (updated_at > ?1 OR (updated_at = ?1 AND id > ?2)) ORDER BY updated_at ASC, id ASC LIMIT ?3",
     softDelete:
-      "UPDATE reminders SET deleted = 1, updated_at = datetime('now') WHERE id = ?",
+      "UPDATE reminders SET deleted = 1, updated_at = datetime('now') WHERE id = ? AND last_modified <= ?",
     purgeDeleted:
       "DELETE FROM reminders WHERE deleted = 1 AND updated_at < datetime('now', '-30 days')",
   },
   calendar_events: {
-    selectLastModified: "SELECT last_modified FROM calendar_events WHERE id = ?",
-    insert:
-      "INSERT INTO calendar_events (id, data, last_modified, updated_at, source_device) VALUES (?, ?, ?, datetime('now'), ?)",
-    update:
-      "UPDATE calendar_events SET data = ?, last_modified = ?, deleted = 0, updated_at = datetime('now'), source_device = ? WHERE id = ?",
+    upsert: `INSERT INTO calendar_events (id, data, last_modified, updated_at, source_device)
+      VALUES (?1, ?2, ?3, datetime('now'), ?4)
+      ON CONFLICT(id) DO UPDATE SET
+        data = excluded.data, last_modified = excluded.last_modified,
+        deleted = 0, updated_at = datetime('now'), source_device = excluded.source_device
+      WHERE calendar_events.last_modified <= excluded.last_modified`,
     selectPage:
       "SELECT id, data, deleted, updated_at, last_modified FROM calendar_events WHERE (updated_at > ?1 OR (updated_at = ?1 AND id > ?2)) ORDER BY updated_at ASC, id ASC LIMIT ?3",
     softDelete:
-      "UPDATE calendar_events SET deleted = 1, updated_at = datetime('now') WHERE id = ?",
+      "UPDATE calendar_events SET deleted = 1, updated_at = datetime('now') WHERE id = ? AND last_modified <= ?",
     purgeDeleted:
       "DELETE FROM calendar_events WHERE deleted = 1 AND updated_at < datetime('now', '-30 days')",
   },
   reminder_lists: {
-    selectLastModified: "SELECT last_modified FROM reminder_lists WHERE id = ?",
-    insert:
-      "INSERT INTO reminder_lists (id, data, last_modified, updated_at, source_device) VALUES (?, ?, ?, datetime('now'), ?)",
-    update:
-      "UPDATE reminder_lists SET data = ?, last_modified = ?, deleted = 0, updated_at = datetime('now'), source_device = ? WHERE id = ?",
+    upsert: `INSERT INTO reminder_lists (id, data, last_modified, updated_at, source_device)
+      VALUES (?1, ?2, ?3, datetime('now'), ?4)
+      ON CONFLICT(id) DO UPDATE SET
+        data = excluded.data, last_modified = excluded.last_modified,
+        deleted = 0, updated_at = datetime('now'), source_device = excluded.source_device
+      WHERE reminder_lists.last_modified <= excluded.last_modified`,
     selectPage:
       "SELECT id, data, deleted, updated_at, last_modified FROM reminder_lists WHERE (updated_at > ?1 OR (updated_at = ?1 AND id > ?2)) ORDER BY updated_at ASC, id ASC LIMIT ?3",
     softDelete:
-      "UPDATE reminder_lists SET deleted = 1, updated_at = datetime('now') WHERE id = ?",
+      "UPDATE reminder_lists SET deleted = 1, updated_at = datetime('now') WHERE id = ? AND last_modified <= ?",
     purgeDeleted:
       "DELETE FROM reminder_lists WHERE deleted = 1 AND updated_at < datetime('now', '-30 days')",
   },
@@ -125,55 +126,21 @@ app.post("/api/v1/:entity/push", async (c) => {
     );
   }
 
-  // Phase 1: Batch-check existing records
-  const selectStmts = items.map((item) =>
-    c.env.DB.prepare(sql.selectLastModified).bind(item.id)
-  );
-  const selectResults = await c.env.DB.batch(selectStmts);
-
-  // Phase 2: Determine writes
-  const writeStmts: D1PreparedStatement[] = [];
-  let synced = 0;
-  let skipped = 0;
-
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
+  // Atomic upsert: INSERT ... ON CONFLICT with last_modified guard
+  const stmts = items.map((item) => {
     const normalizedLM = normalizeTimestamp(item.last_modified);
-    const existing = selectResults[i].results[0] as
-      | { last_modified: string }
-      | undefined;
+    return c.env.DB.prepare(sql.upsert).bind(
+      item.id,
+      JSON.stringify(item.data),
+      normalizedLM,
+      device_id
+    );
+  });
 
-    if (!existing) {
-      writeStmts.push(
-        c.env.DB.prepare(sql.insert).bind(
-          item.id,
-          JSON.stringify(item.data),
-          normalizedLM,
-          device_id
-        )
-      );
-      synced++;
-    } else if (normalizedLM >= normalizeTimestamp(existing.last_modified)) {
-      writeStmts.push(
-        c.env.DB.prepare(sql.update).bind(
-          JSON.stringify(item.data),
-          normalizedLM,
-          device_id,
-          item.id
-        )
-      );
-      synced++;
-    } else {
-      skipped++;
-    }
-  }
+  const results = await c.env.DB.batch(stmts);
+  const synced = results.reduce((n, r) => n + (r.meta.changes ?? 0), 0);
 
-  // Phase 3: Batch-execute writes
-  if (writeStmts.length > 0) {
-    await c.env.DB.batch(writeStmts);
-  }
-
-  return c.json({ synced, skipped });
+  return c.json({ synced, skipped: items.length - synced });
 });
 
 // Pull: incremental cursor-based fetch using composite (updated_at, id) cursor
@@ -223,7 +190,7 @@ app.get("/api/v1/:entity/pull", async (c) => {
   return c.json({ items, cursor: newCursor, has_more: hasMore });
 });
 
-// Soft delete
+// Soft delete with last_modified guard
 app.delete("/api/v1/:entity/:id", async (c) => {
   const sql = getSQL(c.req.param("entity"));
   const id = c.req.param("id");
@@ -232,9 +199,14 @@ app.delete("/api/v1/:entity/:id", async (c) => {
     return c.json({ error: "Invalid entity" }, 400);
   }
 
-  await c.env.DB.prepare(sql.softDelete).bind(id).run();
+  const body = await c.req.json<{ last_modified?: string }>().catch(() => ({}));
+  const lastModified = body.last_modified
+    ? normalizeTimestamp(body.last_modified)
+    : new Date().toISOString();
 
-  return c.json({ deleted: true });
+  const result = await c.env.DB.prepare(sql.softDelete).bind(id, lastModified).run();
+
+  return c.json({ deleted: (result.meta.changes ?? 0) > 0 });
 });
 
 // Purge soft-deleted records older than 30 days

@@ -10,6 +10,12 @@ public actor D1SyncClient {
   private let config: SyncConfig
   private let httpClient: HTTPClient
 
+  private static let iso8601Formatter: ISO8601DateFormatter = {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return formatter
+  }()
+
   public init(config: SyncConfig) {
     self.config = config
     self.httpClient = HTTPClient(eventLoopGroupProvider: .singleton)
@@ -23,13 +29,17 @@ public actor D1SyncClient {
   // MARK: - Reminders
 
   public func pushReminders(
-    _ reminders: [Reminder], idOverrides: [String: String] = [:]
+    _ reminders: [Reminder],
+    idOverrides: [String: String] = [:],
+    lastModifiedByRemoteId: [String: String]
   ) async throws -> PushResult {
     let items = reminders.map { reminder in
-      PushRequestItem(
-        id: idOverrides[reminder.id] ?? reminder.id,
+      let remoteId = idOverrides[reminder.id] ?? reminder.id
+      return PushRequestItem(
+        id: remoteId,
         data: reminder,
-        lastModified: reminder.lastModifiedDate ?? DateFormatter.eventISO8601.string(from: Date())
+        lastModified: lastModifiedByRemoteId[remoteId]
+          ?? Self.iso8601Formatter.string(from: Date())
       )
     }
     return try await push(entity: "reminders", items: items)
@@ -42,13 +52,17 @@ public actor D1SyncClient {
   // MARK: - Calendar Events
 
   public func pushEvents(
-    _ events: [CalendarEvent], idOverrides: [String: String] = [:]
+    _ events: [CalendarEvent],
+    idOverrides: [String: String] = [:],
+    lastModifiedByRemoteId: [String: String]
   ) async throws -> PushResult {
     let items = events.map { event in
-      PushRequestItem(
-        id: idOverrides[event.id] ?? event.id,
+      let remoteId = idOverrides[event.id] ?? event.id
+      return PushRequestItem(
+        id: remoteId,
         data: event,
-        lastModified: event.lastModifiedDate ?? DateFormatter.eventISO8601.string(from: Date())
+        lastModified: lastModifiedByRemoteId[remoteId]
+          ?? Self.iso8601Formatter.string(from: Date())
       )
     }
     return try await push(entity: "calendar_events", items: items)
@@ -71,7 +85,7 @@ public actor D1SyncClient {
         id: remoteId,
         data: list,
         lastModified: lastModifiedByRemoteId[remoteId]
-          ?? DateFormatter.eventISO8601.string(from: Date())
+          ?? Self.iso8601Formatter.string(from: Date())
       )
     }
     return try await push(entity: "reminder_lists", items: items)
@@ -112,16 +126,16 @@ public actor D1SyncClient {
 
   // MARK: - Delete
 
-  public func deleteReminder(id: String) async throws {
-    try await delete(entity: "reminders", id: id)
+  public func deleteReminder(id: String, lastModified: String?) async throws {
+    try await delete(entity: "reminders", id: id, lastModified: lastModified)
   }
 
-  public func deleteEvent(id: String) async throws {
-    try await delete(entity: "calendar_events", id: id)
+  public func deleteEvent(id: String, lastModified: String?) async throws {
+    try await delete(entity: "calendar_events", id: id, lastModified: lastModified)
   }
 
-  public func deleteList(id: String) async throws {
-    try await delete(entity: "reminder_lists", id: id)
+  public func deleteList(id: String, lastModified: String?) async throws {
+    try await delete(entity: "reminder_lists", id: id, lastModified: lastModified)
   }
 
   // MARK: - Generic HTTP Methods
@@ -177,11 +191,14 @@ public actor D1SyncClient {
     return PullResponse(items: items, cursor: dto.cursor, hasMore: dto.hasMore)
   }
 
-  private func delete(entity: String, id: String) async throws {
+  private func delete(entity: String, id: String, lastModified: String?) async throws {
     let encodedId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
     var httpRequest = HTTPClientRequest(url: "\(config.apiURL)/api/v1/\(entity)/\(encodedId)")
     httpRequest.method = .DELETE
     httpRequest.headers.add(name: "Authorization", value: "Bearer \(config.apiToken)")
+    httpRequest.headers.add(name: "Content-Type", value: "application/json")
+    let bodyDict = ["last_modified": lastModified ?? Self.iso8601Formatter.string(from: Date())]
+    httpRequest.body = .bytes(try JSONEncoder().encode(bodyDict))
 
     let response = try await httpClient.execute(httpRequest, timeout: .seconds(30))
     guard response.status == .ok else {

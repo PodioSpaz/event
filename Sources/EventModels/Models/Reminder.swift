@@ -6,7 +6,7 @@ public struct Reminder: Codable, Sendable {
   public let id: String
   public let title: String
   public let isCompleted: Bool
-  public let isFlagged: Bool
+  public let isFlagged: Bool  // Note: EKReminder has no isFlagged, always false
   public let list: String
   public let notes: String?
   public let url: String?

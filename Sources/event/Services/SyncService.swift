@@ -29,17 +29,43 @@ actor SyncService {
     let localToRemote = invertMapping(idMapping.reminders)
     let currentRemoteIds = Set(reminders.map { localToRemote[$0.id] ?? $0.id })
     let deletedRemoteIds = state.reminders.deletionCandidates(currentRemoteIds: currentRemoteIds)
+    let fallbackLastModified = DateFormatter.eventISO8601.string(from: Date())
+    let lastModifiedByRemoteId = try Dictionary(
+      uniqueKeysWithValues: reminders.map { reminder in
+        let remoteId = localToRemote[reminder.id] ?? reminder.id
+        return (
+          remoteId,
+          try state.reminders.lastModified(
+            for: reminder,
+            remoteId: remoteId,
+            fallback: fallbackLastModified
+          )
+        )
+      }
+    )
 
-    let result = try await syncClient.pushReminders(reminders, idOverrides: localToRemote)
+    let result = try await syncClient.pushReminders(
+      reminders,
+      idOverrides: localToRemote,
+      lastModifiedByRemoteId: lastModifiedByRemoteId
+    )
 
     for remoteId in deletedRemoteIds {
-      try await syncClient.deleteReminder(id: remoteId)
+      try await syncClient.deleteReminder(
+        id: remoteId, lastModified: state.reminders.lastModifiedByRemoteId[remoteId])
       idMapping.reminders.removeValue(forKey: remoteId)
       state.reminders.removeRemoteId(remoteId)
     }
 
-    for remoteId in currentRemoteIds {
-      state.reminders.recordKnownRemoteId(remoteId)
+    for reminder in reminders {
+      let remoteId = localToRemote[reminder.id] ?? reminder.id
+      if let lastModified = lastModifiedByRemoteId[remoteId] {
+        try state.reminders.recordSyncedValue(
+          reminder,
+          remoteId: remoteId,
+          lastModified: lastModified
+        )
+      }
     }
 
     try SyncConfigStore.saveIdMapping(idMapping)
@@ -51,29 +77,64 @@ actor SyncService {
     // Syncs events from -1 year to +2 years. Events outside this window are excluded.
     let start = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? Date()
     let end = Calendar.current.date(byAdding: .year, value: 2, to: Date()) ?? Date()
-    let formatter = DateFormatter()
-    formatter.dateFormat = "yyyy-MM-dd"
+    let dateFormatter = DateFormatter()
+    dateFormatter.dateFormat = "yyyy-MM-dd"
+    let startString = dateFormatter.string(from: start)
+    let endString = dateFormatter.string(from: end)
     let events = try await calendarService.fetchEvents(
-      startDate: formatter.string(from: start),
-      endDate: formatter.string(from: end)
+      startDate: startString,
+      endDate: endString
     )
     var idMapping = SyncConfigStore.loadIdMapping()
     var state = SyncConfigStore.loadState()
     let localToRemote = invertMapping(idMapping.calendarEvents)
     let currentRemoteIds = Set(events.map { localToRemote[$0.id] ?? $0.id })
+    let fetchWindow = SyncDateRange(start: startString, end: endString)
     let deletedRemoteIds = state.calendarEvents.deletionCandidates(
-      currentRemoteIds: currentRemoteIds)
+      currentRemoteIds: currentRemoteIds,
+      withinRange: fetchWindow
+    )
+    let fallbackLastModified = DateFormatter.eventISO8601.string(from: Date())
+    let lastModifiedByRemoteId = try Dictionary(
+      uniqueKeysWithValues: events.map { event in
+        let remoteId = localToRemote[event.id] ?? event.id
+        return (
+          remoteId,
+          try state.calendarEvents.lastModified(
+            for: event,
+            remoteId: remoteId,
+            fallback: fallbackLastModified
+          )
+        )
+      }
+    )
 
-    let result = try await syncClient.pushEvents(events, idOverrides: localToRemote)
+    let result = try await syncClient.pushEvents(
+      events,
+      idOverrides: localToRemote,
+      lastModifiedByRemoteId: lastModifiedByRemoteId
+    )
 
     for remoteId in deletedRemoteIds {
-      try await syncClient.deleteEvent(id: remoteId)
+      try await syncClient.deleteEvent(
+        id: remoteId, lastModified: state.calendarEvents.lastModifiedByRemoteId[remoteId])
       idMapping.calendarEvents.removeValue(forKey: remoteId)
       state.calendarEvents.removeRemoteId(remoteId)
     }
 
-    for remoteId in currentRemoteIds {
-      state.calendarEvents.recordKnownRemoteId(remoteId)
+    for event in events {
+      let remoteId = localToRemote[event.id] ?? event.id
+      if let lastModified = lastModifiedByRemoteId[remoteId] {
+        try state.calendarEvents.recordSyncedValue(
+          event,
+          remoteId: remoteId,
+          lastModified: lastModified
+        )
+      }
+      state.calendarEvents.recordDateRange(
+        SyncDateRange(start: event.startDate, end: event.endDate),
+        for: remoteId
+      )
     }
 
     try SyncConfigStore.saveIdMapping(idMapping)
@@ -111,7 +172,8 @@ actor SyncService {
     )
 
     for remoteId in deletedRemoteIds {
-      try await syncClient.deleteList(id: remoteId)
+      try await syncClient.deleteList(
+        id: remoteId, lastModified: state.reminderLists.lastModifiedByRemoteId[remoteId])
       idMapping.reminderLists.removeValue(forKey: remoteId)
       state.reminderLists.removeRemoteId(remoteId)
     }

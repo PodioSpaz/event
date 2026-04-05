@@ -82,25 +82,54 @@ public struct SyncCursors: Codable, Sendable {
   }
 }
 
+// MARK: - Sync Date Range
+
+public struct SyncDateRange: Codable, Sendable, Equatable {
+  public let start: String
+  public let end: String
+
+  public init(start: String, end: String) {
+    self.start = start
+    self.end = end
+  }
+
+  public func overlaps(_ other: SyncDateRange) -> Bool {
+    start <= other.end && end >= other.start
+  }
+}
+
 // MARK: - Sync State
 
 public struct SyncEntityState: Codable, Sendable, Equatable {
   public var knownRemoteIds: Set<String>
   public var lastModifiedByRemoteId: [String: String]
   public var snapshotsByRemoteId: [String: String]
+  public var dateRangeByRemoteId: [String: SyncDateRange]
 
   public init(
     knownRemoteIds: Set<String> = [],
     lastModifiedByRemoteId: [String: String] = [:],
-    snapshotsByRemoteId: [String: String] = [:]
+    snapshotsByRemoteId: [String: String] = [:],
+    dateRangeByRemoteId: [String: SyncDateRange] = [:]
   ) {
     self.knownRemoteIds = knownRemoteIds
     self.lastModifiedByRemoteId = lastModifiedByRemoteId
     self.snapshotsByRemoteId = snapshotsByRemoteId
+    self.dateRangeByRemoteId = dateRangeByRemoteId
   }
 
   public func deletionCandidates(currentRemoteIds: Set<String>) -> [String] {
     knownRemoteIds.subtracting(currentRemoteIds).sorted()
+  }
+
+  public func deletionCandidates(
+    currentRemoteIds: Set<String>,
+    withinRange range: SyncDateRange
+  ) -> [String] {
+    knownRemoteIds.subtracting(currentRemoteIds).filter { id in
+      guard let stored = dateRangeByRemoteId[id] else { return true }
+      return stored.overlaps(range)
+    }.sorted()
   }
 
   public func lastModified<T: Encodable>(
@@ -125,6 +154,11 @@ public struct SyncEntityState: Codable, Sendable, Equatable {
     knownRemoteIds.remove(remoteId)
     lastModifiedByRemoteId.removeValue(forKey: remoteId)
     snapshotsByRemoteId.removeValue(forKey: remoteId)
+    dateRangeByRemoteId.removeValue(forKey: remoteId)
+  }
+
+  public mutating func recordDateRange(_ range: SyncDateRange, for remoteId: String) {
+    dateRangeByRemoteId[remoteId] = range
   }
 
   public mutating func recordSyncedValue<T: Encodable>(
