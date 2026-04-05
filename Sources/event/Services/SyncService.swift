@@ -48,6 +48,7 @@ actor SyncService {
   }
 
   func pushEvents() async throws -> PushResult {
+    // Syncs events from -1 year to +2 years. Events outside this window are excluded.
     let start = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? Date()
     let end = Calendar.current.date(byAdding: .year, value: 2, to: Date()) ?? Date()
     let formatter = DateFormatter()
@@ -60,7 +61,8 @@ actor SyncService {
     var state = SyncConfigStore.loadState()
     let localToRemote = invertMapping(idMapping.calendarEvents)
     let currentRemoteIds = Set(events.map { localToRemote[$0.id] ?? $0.id })
-    let deletedRemoteIds = state.calendarEvents.deletionCandidates(currentRemoteIds: currentRemoteIds)
+    let deletedRemoteIds = state.calendarEvents.deletionCandidates(
+      currentRemoteIds: currentRemoteIds)
 
     let result = try await syncClient.pushEvents(events, idOverrides: localToRemote)
 
@@ -85,7 +87,8 @@ actor SyncService {
     var state = SyncConfigStore.loadState()
     let localToRemote = invertMapping(idMapping.reminderLists)
     let currentRemoteIds = Set(lists.map { localToRemote[$0.id] ?? $0.id })
-    let deletedRemoteIds = state.reminderLists.deletionCandidates(currentRemoteIds: currentRemoteIds)
+    let deletedRemoteIds = state.reminderLists.deletionCandidates(
+      currentRemoteIds: currentRemoteIds)
     let fallbackLastModified = DateFormatter.eventISO8601.string(from: Date())
     let lastModifiedByRemoteId = try Dictionary(
       uniqueKeysWithValues: lists.map { list in
@@ -132,292 +135,233 @@ actor SyncService {
   // MARK: - Pull
 
   func pullReminders() async throws -> PullSummary {
-    var cursors = SyncConfigStore.loadCursors()
-    var idMapping = SyncConfigStore.loadIdMapping()
-    var state = SyncConfigStore.loadState()
-    var pulled = 0
-    var deleted = 0
-    var hasMore = true
-
-    while hasMore {
-      let response = try await syncClient.pullReminders(cursor: cursors.reminders)
-      hasMore = response.hasMore
-      var hadFailures = false
-
-      for item in response.items {
-        let localId = idMapping.reminders[item.id] ?? item.id
-
-        if item.deleted {
-          do {
-            try await reminderService.deleteReminder(id: localId)
-            idMapping.reminders.removeValue(forKey: item.id)
-            state.reminders.removeRemoteId(item.id)
-            deleted += 1
-          } catch let error as EventCLIError where isNotFoundError(error) {
-            idMapping.reminders.removeValue(forKey: item.id)
-            state.reminders.removeRemoteId(item.id)
-            deleted += 1
-          } catch {
-            print("Warning: Could not delete reminder \(item.id): \(error)")
-            hadFailures = true
-          }
+    try await pullEntities(
+      entityName: "reminders",
+      pull: { cursor in try await self.syncClient.pullReminders(cursor: cursor) },
+      getCursor: { $0.reminders },
+      setCursor: { $0.reminders = $1 },
+      getMapping: { $0.reminders },
+      setMapping: { mapping, key, value in
+        if let value {
+          mapping.reminders[key] = value
         } else {
-          do {
-            _ = try await reminderService.updateReminder(
-              id: localId,
-              title: item.data.title,
+          mapping.reminders.removeValue(forKey: key)
+        }
+      },
+      getEntityState: { $0.reminders },
+      setEntityState: { $0.reminders = $1 },
+      applyDelete: { localId in
+        try await self.reminderService.deleteReminder(id: localId)
+      },
+      applyUpsert: { localId, item in
+        do {
+          _ = try await self.reminderService.updateReminder(
+            id: localId,
+            title: item.data.title,
+            completed: item.data.isCompleted,
+            notes: item.data.notes,
+            dueDate: item.data.dueDate,
+            clearDue: item.data.dueDate == nil,
+            startDate: item.data.startDate,
+            clearStart: item.data.startDate == nil,
+            priority: item.data.priority,
+            url: item.data.url,
+            useShortcuts: false
+          )
+          return nil
+        } catch let error as EventCLIError where self.isNotFoundError(error) {
+          try await self.ensureReminderListExists(named: item.data.list)
+          let created = try await self.reminderService.createReminder(
+            title: item.data.title,
+            listName: item.data.list,
+            notes: item.data.notes,
+            url: item.data.url,
+            dueDate: item.data.dueDate,
+            priority: item.data.priority,
+            useShortcuts: false
+          )
+          if item.data.isCompleted || item.data.startDate != nil {
+            _ = try await self.reminderService.updateReminder(
+              id: created.id,
               completed: item.data.isCompleted,
-              notes: item.data.notes,
-              dueDate: item.data.dueDate,
-              clearDue: item.data.dueDate == nil,
               startDate: item.data.startDate,
-              clearStart: item.data.startDate == nil,
-              priority: item.data.priority,
-              url: item.data.url,
               useShortcuts: false
             )
-            try state.reminders.recordSyncedValue(
-              item.data,
-              remoteId: item.id,
-              lastModified: item.lastModified
-            )
-            pulled += 1
-          } catch let error as EventCLIError where isNotFoundError(error) {
-            do {
-              try await ensureReminderListExists(named: item.data.list)
-              let created = try await reminderService.createReminder(
-                title: item.data.title,
-                listName: item.data.list,
-                notes: item.data.notes,
-                url: item.data.url,
-                dueDate: item.data.dueDate,
-                priority: item.data.priority,
-                useShortcuts: false
-              )
-              if item.data.isCompleted || item.data.startDate != nil {
-                _ = try await reminderService.updateReminder(
-                  id: created.id,
-                  completed: item.data.isCompleted,
-                  startDate: item.data.startDate,
-                  useShortcuts: false
-                )
-              }
-              idMapping.reminders[item.id] = created.id
-              try state.reminders.recordSyncedValue(
-                item.data,
-                remoteId: item.id,
-                lastModified: item.lastModified
-              )
-              pulled += 1
-            } catch {
-              print("Warning: Could not create reminder \(item.id): \(error)")
-              hadFailures = true
-            }
-          } catch {
-            print("Warning: Could not update reminder \(item.id): \(error)")
-            hadFailures = true
           }
+          return created.id
         }
       }
-
-      cursors.reminders = SyncCursorPolicy.nextCursor(
-        currentCursor: cursors.reminders,
-        responseCursor: response.cursor,
-        hadFailures: hadFailures
-      )
-      if hadFailures {
-        try SyncConfigStore.saveCursors(cursors)
-        try SyncConfigStore.saveIdMapping(idMapping)
-        try SyncConfigStore.saveState(state)
-        throw EventCLIError.unknown(
-          "Pull reminders failed for one or more items. Cursor was not advanced."
-        )
-      }
-    }
-
-    try SyncConfigStore.saveCursors(cursors)
-    try SyncConfigStore.saveIdMapping(idMapping)
-    try SyncConfigStore.saveState(state)
-    return PullSummary(pulled: pulled, deleted: deleted)
+    )
   }
 
   func pullEvents() async throws -> PullSummary {
-    var cursors = SyncConfigStore.loadCursors()
-    var idMapping = SyncConfigStore.loadIdMapping()
-    var state = SyncConfigStore.loadState()
-    var pulled = 0
-    var deleted = 0
-    var hasMore = true
-
-    while hasMore {
-      let response = try await syncClient.pullEvents(cursor: cursors.calendarEvents)
-      hasMore = response.hasMore
-      var hadFailures = false
-
-      for item in response.items {
-        let localId = idMapping.calendarEvents[item.id] ?? item.id
-
-        if item.deleted {
-          do {
-            try await calendarService.deleteEvent(id: localId)
-            idMapping.calendarEvents.removeValue(forKey: item.id)
-            state.calendarEvents.removeRemoteId(item.id)
-            deleted += 1
-          } catch let error as EventCLIError where isNotFoundError(error) {
-            idMapping.calendarEvents.removeValue(forKey: item.id)
-            state.calendarEvents.removeRemoteId(item.id)
-            deleted += 1
-          } catch {
-            print("Warning: Could not delete event \(item.id): \(error)")
-            hadFailures = true
-          }
+    try await pullEntities(
+      entityName: "calendar events",
+      pull: { cursor in try await self.syncClient.pullEvents(cursor: cursor) },
+      getCursor: { $0.calendarEvents },
+      setCursor: { $0.calendarEvents = $1 },
+      getMapping: { $0.calendarEvents },
+      setMapping: { mapping, key, value in
+        if let value {
+          mapping.calendarEvents[key] = value
         } else {
-          do {
-            _ = try await calendarService.updateEvent(
-              id: localId,
-              title: item.data.title,
-              startDate: item.data.startDate,
-              endDate: item.data.endDate,
-              location: item.data.location,
-              notes: item.data.notes,
-              url: item.data.url
-            )
-            pulled += 1
-            try state.calendarEvents.recordSyncedValue(
-              item.data,
-              remoteId: item.id,
-              lastModified: item.lastModified
-            )
-          } catch let error as EventCLIError where isNotFoundError(error) {
-            do {
-              let created = try await calendarService.createEvent(
-                title: item.data.title,
-                startDate: item.data.startDate,
-                endDate: item.data.endDate,
-                calendarName: item.data.calendar,
-                location: item.data.location,
-                notes: item.data.notes,
-                url: item.data.url
-              )
-              idMapping.calendarEvents[item.id] = created.id
-              try state.calendarEvents.recordSyncedValue(
-                item.data,
-                remoteId: item.id,
-                lastModified: item.lastModified
-              )
-              pulled += 1
-            } catch {
-              print("Warning: Could not create event \(item.id): \(error)")
-              hadFailures = true
-            }
-          } catch {
-            print("Warning: Could not update event \(item.id): \(error)")
-            hadFailures = true
-          }
+          mapping.calendarEvents.removeValue(forKey: key)
+        }
+      },
+      getEntityState: { $0.calendarEvents },
+      setEntityState: { $0.calendarEvents = $1 },
+      applyDelete: { localId in
+        try await self.calendarService.deleteEvent(id: localId)
+      },
+      applyUpsert: { localId, item in
+        do {
+          _ = try await self.calendarService.updateEvent(
+            id: localId,
+            title: item.data.title,
+            startDate: item.data.startDate,
+            endDate: item.data.endDate,
+            location: item.data.location,
+            notes: item.data.notes,
+            url: item.data.url
+          )
+          return nil
+        } catch let error as EventCLIError where self.isNotFoundError(error) {
+          let created = try await self.calendarService.createEvent(
+            title: item.data.title,
+            startDate: item.data.startDate,
+            endDate: item.data.endDate,
+            calendarName: item.data.calendar,
+            location: item.data.location,
+            notes: item.data.notes,
+            url: item.data.url
+          )
+          return created.id
         }
       }
-
-      cursors.calendarEvents = SyncCursorPolicy.nextCursor(
-        currentCursor: cursors.calendarEvents,
-        responseCursor: response.cursor,
-        hadFailures: hadFailures
-      )
-      if hadFailures {
-        try SyncConfigStore.saveCursors(cursors)
-        try SyncConfigStore.saveIdMapping(idMapping)
-        try SyncConfigStore.saveState(state)
-        throw EventCLIError.unknown(
-          "Pull calendar events failed for one or more items. Cursor was not advanced."
-        )
-      }
-    }
-
-    try SyncConfigStore.saveCursors(cursors)
-    try SyncConfigStore.saveIdMapping(idMapping)
-    try SyncConfigStore.saveState(state)
-    return PullSummary(pulled: pulled, deleted: deleted)
+    )
   }
 
   func pullLists() async throws -> PullSummary {
+    try await pullEntities(
+      entityName: "reminder lists",
+      pull: { cursor in try await self.syncClient.pullLists(cursor: cursor) },
+      getCursor: { $0.reminderLists },
+      setCursor: { $0.reminderLists = $1 },
+      getMapping: { $0.reminderLists },
+      setMapping: { mapping, key, value in
+        if let value {
+          mapping.reminderLists[key] = value
+        } else {
+          mapping.reminderLists.removeValue(forKey: key)
+        }
+      },
+      getEntityState: { $0.reminderLists },
+      setEntityState: { $0.reminderLists = $1 },
+      applyDelete: { localId in
+        try await self.listService.deleteList(id: localId)
+      },
+      applyUpsert: { localId, item in
+        do {
+          _ = try await self.listService.updateList(id: localId, name: item.data.title)
+          return nil
+        } catch let error as EventCLIError where self.isNotFoundError(error) {
+          let created = try await self.listService.createList(name: item.data.title)
+          return created.id
+        }
+      }
+    )
+  }
+
+  // MARK: - Generic Pull Loop
+
+  private func pullEntities<T: Codable & Sendable>(
+    entityName: String,
+    pull: (String?) async throws -> PullResponse<T>,
+    getCursor: (SyncCursors) -> String?,
+    setCursor: (inout SyncCursors, String?) -> Void,
+    getMapping: (SyncIdMapping) -> [String: String],
+    setMapping: (inout SyncIdMapping, String, String?) -> Void,
+    getEntityState: (SyncState) -> SyncEntityState,
+    setEntityState: (inout SyncState, SyncEntityState) -> Void,
+    applyDelete: (String) async throws -> Void,
+    applyUpsert: (String, PullItem<T>) async throws -> String?
+  ) async throws -> PullSummary {
     var cursors = SyncConfigStore.loadCursors()
     var idMapping = SyncConfigStore.loadIdMapping()
     var state = SyncConfigStore.loadState()
+    var entityState = getEntityState(state)
     var pulled = 0
     var deleted = 0
     var hasMore = true
 
     while hasMore {
-      let response = try await syncClient.pullLists(cursor: cursors.reminderLists)
+      let response = try await pull(getCursor(cursors))
       hasMore = response.hasMore
       var hadFailures = false
 
       for item in response.items {
-        let localId = idMapping.reminderLists[item.id] ?? item.id
+        let localId = getMapping(idMapping)[item.id] ?? item.id
 
         if item.deleted {
           do {
-            try await listService.deleteList(id: localId)
-            idMapping.reminderLists.removeValue(forKey: item.id)
-            state.reminderLists.removeRemoteId(item.id)
-            deleted += 1
+            try await applyDelete(localId)
           } catch let error as EventCLIError where isNotFoundError(error) {
-            idMapping.reminderLists.removeValue(forKey: item.id)
-            state.reminderLists.removeRemoteId(item.id)
-            deleted += 1
+            // Already gone locally, clean up mapping
           } catch {
-            print("Warning: Could not delete list \(item.id): \(error)")
+            fputs("Warning: Could not delete \(entityName) \(item.id): \(error)\n", stderr)
             hadFailures = true
+            continue
           }
+          setMapping(&idMapping, item.id, nil)
+          entityState.removeRemoteId(item.id)
+          deleted += 1
         } else {
           do {
-            _ = try await listService.updateList(id: localId, name: item.data.title)
-            try state.reminderLists.recordSyncedValue(
+            let newLocalId = try await applyUpsert(localId, item)
+            if let newLocalId {
+              setMapping(&idMapping, item.id, newLocalId)
+            }
+            try entityState.recordSyncedValue(
               item.data,
               remoteId: item.id,
               lastModified: item.lastModified
             )
             pulled += 1
-          } catch let error as EventCLIError where isNotFoundError(error) {
-            do {
-              let created = try await listService.createList(name: item.data.title)
-              idMapping.reminderLists[item.id] = created.id
-              try state.reminderLists.recordSyncedValue(
-                item.data,
-                remoteId: item.id,
-                lastModified: item.lastModified
-              )
-              pulled += 1
-            } catch {
-              print("Warning: Could not create list \(item.id): \(error)")
-              hadFailures = true
-            }
           } catch {
-            print("Warning: Could not update list \(item.id): \(error)")
+            fputs("Warning: Could not sync \(entityName) \(item.id): \(error)\n", stderr)
             hadFailures = true
           }
         }
       }
 
-      cursors.reminderLists = SyncCursorPolicy.nextCursor(
-        currentCursor: cursors.reminderLists,
-        responseCursor: response.cursor,
-        hadFailures: hadFailures
+      setCursor(
+        &cursors,
+        SyncCursorPolicy.nextCursor(
+          currentCursor: getCursor(cursors),
+          responseCursor: response.cursor,
+          hadFailures: hadFailures
+        )
       )
+      setEntityState(&state, entityState)
+
       if hadFailures {
         try SyncConfigStore.saveCursors(cursors)
         try SyncConfigStore.saveIdMapping(idMapping)
         try SyncConfigStore.saveState(state)
         throw EventCLIError.unknown(
-          "Pull reminder lists failed for one or more items. Cursor was not advanced."
+          "Pull \(entityName) failed for one or more items. Cursor was not advanced."
         )
       }
     }
 
+    setEntityState(&state, entityState)
     try SyncConfigStore.saveCursors(cursors)
     try SyncConfigStore.saveIdMapping(idMapping)
     try SyncConfigStore.saveState(state)
     return PullSummary(pulled: pulled, deleted: deleted)
   }
+
+  // MARK: - Helpers
 
   private func ensureReminderListExists(named listName: String) async throws {
     let normalizedName = listName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -441,6 +385,16 @@ actor SyncService {
   }
 
   private nonisolated func invertMapping(_ mapping: [String: String]) -> [String: String] {
-    Dictionary(mapping.map { ($0.value, $0.key) }, uniquingKeysWith: { first, _ in first })
+    var inverted: [String: String] = [:]
+    inverted.reserveCapacity(mapping.count)
+    for (remote, local) in mapping {
+      if let existing = inverted[local] {
+        fputs(
+          "Warning: duplicate ID mapping -- local '\(local)' maps to both '\(existing)' and '\(remote)'\n",
+          stderr)
+      }
+      inverted[local] = remote
+    }
+    return inverted
   }
 }

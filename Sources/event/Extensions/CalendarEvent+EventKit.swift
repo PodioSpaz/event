@@ -57,6 +57,8 @@ extension CalendarEvent {
     } else if let externalId = ekEvent.calendarItemExternalIdentifier, !externalId.isEmpty {
       eventId = externalId
     } else {
+      // Synthetic ID -- not stable if title or start time changes, but this path
+      // should be unreachable for real EKEvents (they always have an identifier).
       eventId =
         "ek-\(ekEvent.calendar?.title ?? "unknown")-\(ekEvent.title ?? "untitled")-\(ekEvent.startDate?.timeIntervalSince1970 ?? 0)"
     }
