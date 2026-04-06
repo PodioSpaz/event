@@ -26,24 +26,41 @@ swift package clean
 
 # Format code
 swift format --in-place --recursive Sources Package.swift
+
+# Sync CLI
+.build/debug/event sync config --apiUrl <URL> --apiToken <TOKEN> --deviceId <ID>
+.build/debug/event sync status
+.build/debug/event sync push [--type reminders|calendar|lists|all]
+.build/debug/event sync pull [--type reminders|calendar|lists|all]
+
+# Worker development (Cloudflare)
+cd worker && pnpm install
+cd worker && wrangler dev           # local dev
+cd worker && wrangler deploy        # deploy
+cd worker && pnpm run db:migrate          # local D1 migration
+cd worker && pnpm run db:migrate:remote   # remote D1 migration
 ```
 
 ## Architecture
 
-This is a pure Swift CLI tool for managing Apple Reminders and Calendar via EventKit. The architecture follows a layered pattern: Commands → Services → EventKit, with Models and Formatters as cross-cutting concerns.
+Pure Swift CLI for managing Apple Reminders and Calendar via EventKit, with Cloudflare D1 cloud sync.
+
+### Target Structure
+
+| Target | Type | Purpose |
+|--------|------|---------|
+| `EventModels` | Library | Shared domain models, formatters, sync DTOs, utilities |
+| `EventSync` | Library | `D1SyncClient` HTTP client for Cloudflare D1 |
+| `EventCommands` | Library | Shared command helpers |
+| `event` | Executable | Main CLI (reminders, calendar, sync commands) |
+| `event-sync` | Executable | Standalone sync tool |
+| `worker/` | TypeScript | Cloudflare Worker API (Hono + D1) |
+
+Dependencies flow inward: Commands -> Services -> EventKit. Both executables require `-parse-as-library` compiler flag (set in Package.swift) for ArgumentParser `@main`.
 
 ### Key Architectural Decisions
 
-**Swift Concurrency with Actors**: All services use `actor` for thread-safe EventKit access. EventKit's `EKEventStore` is not thread-safe, so each service maintains its own store instance within an actor:
-
-```swift
-actor ReminderService {
-    private let eventStore = EKEventStore()
-    // All EventKit operations are serialized through the actor
-}
-```
-
-**ArgumentParser Integration**: The CLI uses Swift ArgumentParser with a hierarchical command structure. The `@main` attribute requires the `-parse-as-library` compiler flag (set in Package.swift) to avoid conflicts with top-level code.
+**Swift Concurrency with Actors**: All services use `actor` for thread-safe EventKit access. EventKit's `EKEventStore` is not thread-safe, so each service maintains its own store instance within an actor.
 
 **Data Storage Workarounds**: EventKit does not expose public APIs for tags or subtasks. All such data is managed by `NotesParser` and stored in the reminder's `notes` field using a single `---` separator:
 
@@ -71,13 +88,24 @@ All dates use `yyyy-MM-dd HH:mm:ss` format (e.g., "2026-03-10 14:00:00"). EventK
 
 ### Error Handling
 
-Custom `EventCLIError` enum provides structured errors:
-- `permissionDenied`: EventKit permission issues
-- `notFound`: Missing reminders/lists/events
-- `invalidInput`: Bad user input
-- `eventKitError`: EventKit API failures
+Custom `EventCLIError` enum provides structured errors: `permissionDenied`, `notFound`, `invalidInput`, `eventKitError`. All services throw these; caught at command level for CLI output.
 
-All services throw these errors, which are caught at the command level and formatted for CLI output.
+### Sync Architecture
+
+`SyncService` orchestrates push/pull/delete between local EventKit and a Cloudflare D1 backend via `D1SyncClient` (AsyncHTTPClient). Pull order: lists -> reminders -> calendar events (dependency order).
+
+**Config storage**: `~/.config/event-sync/` with exclusive file lock (`.lock`). Files: `config.json` (apiURL/apiToken/deviceId), `cursors.json`, `id-mapping.json` (local<->remote), `state.json`. All files mode `0o600`. API URL must be HTTPS.
+
+**Worker** (`worker/`): Hono framework on Cloudflare Workers with D1 database. Endpoints at `/api/v1/{entity}/{operation}` for push (POST), pull (GET with cursor pagination), delete (DELETE, soft-delete). Auth via `API_TOKEN` secret (Bearer token). `wrangler.toml` needs actual `database_id`.
+
+## Code Style
+
+Configured via `.swift-format`: 2-space indentation, 100-character line length, file-scoped declaration privacy. Run `swift format --in-place --recursive Sources Package.swift` to format.
+
+## Conventions
+
+- Conventional commits per `.git-agent/config.yml` (scopes: formula, src, wrk, bin, cli, svc, fmt, cmd, ext, util, sync, mod)
+- All tests must pass before merging PRs
 
 ## Critical Constraints
 
@@ -101,4 +129,14 @@ Run commands directly from build directory:
 .build/debug/event reminders create --title "Test" --tags "test,cli"
 .build/debug/event reminders update --id <ID> --completed
 .build/debug/event reminders delete --id <ID>
+
+# Test sync (requires configured worker)
+.build/debug/event sync status
+.build/debug/event sync push --type reminders
+.build/debug/event sync pull --type calendar
+
+# Run tests
+swift test
+swift test --filter eventTests        # single test target
+swift test --filter AlarmTests        # single test suite
 ```
