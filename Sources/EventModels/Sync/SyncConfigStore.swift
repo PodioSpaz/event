@@ -50,14 +50,12 @@ public enum SyncConfigStore {
   // MARK: - Config
 
   public static func load() throws -> SyncConfig {
-    let data: Data
-    do {
-      data = try Data(contentsOf: URL(fileURLWithPath: configPath))
-    } catch {
+    guard FileManager.default.fileExists(atPath: configPath) else {
       throw EventCLIError.notFound(
         "Sync config not found. Run 'event sync config --api-url <URL> --api-token <TOKEN> --device-id <ID>' first."
       )
     }
+    let data = try Data(contentsOf: URL(fileURLWithPath: configPath))
     return try JSONDecoder().decode(SyncConfig.self, from: data)
   }
 

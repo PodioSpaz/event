@@ -19,6 +19,11 @@ public struct SyncConfig: Codable, Sendable {
 public struct PushResult: Codable, Sendable {
   public let synced: Int
   public let skipped: Int
+
+  public init(synced: Int, skipped: Int) {
+    self.synced = synced
+    self.skipped = skipped
+  }
 }
 
 public struct PullResponse<T: Codable & Sendable>: Sendable {
@@ -64,6 +69,39 @@ public struct SyncIdMapping: Codable, Sendable {
     self.reminders = reminders
     self.calendarEvents = calendarEvents
     self.reminderLists = reminderLists
+  }
+
+  /// A local ID claimed by more than one remote ID while inverting a mapping.
+  public struct InversionCollision: Sendable, Equatable {
+    public let localId: String
+    public let keptRemoteId: String
+    public let droppedRemoteId: String
+
+    public init(localId: String, keptRemoteId: String, droppedRemoteId: String) {
+      self.localId = localId
+      self.keptRemoteId = keptRemoteId
+      self.droppedRemoteId = droppedRemoteId
+    }
+  }
+
+  /// Inverts a remote-to-local map into local-to-remote. When two remote IDs
+  /// claim the same local ID, the lexicographically smaller remote ID is kept
+  /// (deterministic) and the collision is reported for the caller to surface.
+  public static func inverted(
+    _ mapping: [String: String]
+  ) -> (mapping: [String: String], collisions: [InversionCollision]) {
+    var inverted: [String: String] = [:]
+    inverted.reserveCapacity(mapping.count)
+    var collisions: [InversionCollision] = []
+    for (remote, local) in mapping.sorted(by: { $0.key < $1.key }) {
+      if let existing = inverted[local] {
+        collisions.append(
+          InversionCollision(localId: local, keptRemoteId: existing, droppedRemoteId: remote))
+      } else {
+        inverted[local] = remote
+      }
+    }
+    return (inverted, collisions)
   }
 }
 
