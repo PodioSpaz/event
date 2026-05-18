@@ -105,18 +105,30 @@ event reminders lists create --name "Work"
 
 ### Sync (Cloudflare D1)
 
+Configure the D1 connection with environment variables, then sync with a single command:
+
 ```bash
-# Configure sync (requires Cloudflare Worker)
-event sync config --apiUrl <WORKER_URL> --apiToken <TOKEN> --deviceId <DEVICE_ID>
+# Configure (requires a Cloudflare Worker — see worker/)
+export EVENT_SYNC_API_URL=https://<your-worker>.workers.dev
+export EVENT_SYNC_API_TOKEN=<token>
+# EVENT_SYNC_DEVICE_ID is optional; defaults to the machine hostname
 
-# Push local data to cloud
-event sync push --type all
+# Run a full bidirectional sync (pull, then push)
+event sync
 
-# Pull data from cloud
-event sync pull --type all
-
-# Check sync status
+# Check configuration and sync state
 event sync status
+```
+
+Environment variables take precedence. If they are unset, `event` falls back to
+a config file written by `event sync config --api-url <URL> --api-token <TOKEN>
+--device-id <ID>`.
+
+Advanced one-directional / selective sync:
+
+```bash
+event sync push --type all      # push only
+event sync pull --type calendar # pull only, one entity type
 ```
 
 > **Note:** Calendar sync covers events from one year in the past to two years

@@ -28,10 +28,11 @@ swift package clean
 swift format --in-place --recursive Sources Package.swift
 
 # Sync CLI
-.build/debug/event sync config --apiUrl <URL> --apiToken <TOKEN> --deviceId <ID>
+.build/debug/event sync                  # full bidirectional sync (pull, then push)
 .build/debug/event sync status
-.build/debug/event sync push [--type reminders|calendar|lists|all]
-.build/debug/event sync pull [--type reminders|calendar|lists|all]
+.build/debug/event sync config --api-url <URL> --api-token <TOKEN> --device-id <ID>
+.build/debug/event sync push [--type reminders|calendar|lists|all]   # one-directional
+.build/debug/event sync pull [--type reminders|calendar|lists|all]   # one-directional
 
 # Worker development (Cloudflare)
 cd worker && pnpm install
@@ -82,9 +83,9 @@ Custom `EventCLIError` enum provides structured errors: `permissionDenied`, `not
 
 ### Sync Architecture
 
-`SyncService` orchestrates push/pull/delete between local EventKit and a Cloudflare D1 backend via `D1SyncClient` (AsyncHTTPClient). Pull order: lists -> reminders -> calendar events (dependency order).
+`SyncService` orchestrates push/pull/delete between local EventKit and a Cloudflare D1 backend via `D1SyncClient` (AsyncHTTPClient). Pull order: lists -> reminders -> calendar events (dependency order). Bare `event sync` is `SyncCommands.FullSync` (the `defaultSubcommand`): a full sync that pulls then pushes; `push`/`pull` remain as one-directional subcommands.
 
-**Config storage**: `~/.config/event-sync/` with exclusive file lock (`.lock`). Files: `config.json` (apiURL/apiToken/deviceId), `cursors.json`, `id-mapping.json` (local<->remote), `state.json`. All files mode `0o600`. API URL must be HTTPS.
+**Config storage**: `SyncConfigStore.load()` reads connection settings from environment variables first (`EVENT_SYNC_API_URL`, `EVENT_SYNC_API_TOKEN`, optional `EVENT_SYNC_DEVICE_ID` which defaults to the hostname), falling back to `~/.config/event-sync/config.json` (written by `event sync config`). Setting exactly one of the two required env vars is an error. Sync state always lives in `~/.config/event-sync/` with an exclusive file lock (`.lock`): `cursors.json`, `id-mapping.json` (local<->remote), `state.json` — all mode `0o600`. API URL must be HTTPS.
 
 **Worker** (`worker/`): Hono framework on Cloudflare Workers with D1 database. Endpoints at `/api/v1/{entity}/{operation}` for push (POST), pull (GET with cursor pagination), delete (DELETE, soft-delete). Pull accepts a `device` query param so a device never pulls back its own writes. Auth via `API_TOKEN` secret (Bearer token). `wrangler.toml` needs actual `database_id`. Schema lives in `worker/migrations/` (numbered files applied via `wrangler d1 migrations apply`); a daily cron trigger purges records soft-deleted over 30 days ago.
 
@@ -121,6 +122,7 @@ Run commands directly from build directory:
 
 # Test sync (requires configured worker)
 .build/debug/event sync status
+.build/debug/event sync                       # full bidirectional sync
 .build/debug/event sync push --type reminders
 .build/debug/event sync pull --type calendar
 

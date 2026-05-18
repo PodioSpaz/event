@@ -105,18 +105,29 @@ event reminders lists create --name "工作"
 
 ### 同步（Cloudflare D1）
 
+用环境变量配置 D1 连接，然后用一条命令完成同步：
+
 ```bash
-# 配置同步（需要 Cloudflare Worker）
-event sync config --apiUrl <WORKER_URL> --apiToken <TOKEN> --deviceId <DEVICE_ID>
+# 配置（需要 Cloudflare Worker，详见 worker/）
+export EVENT_SYNC_API_URL=https://<your-worker>.workers.dev
+export EVENT_SYNC_API_TOKEN=<token>
+# EVENT_SYNC_DEVICE_ID 可选，未设置时默认使用主机名
 
-# 将本地数据推送到云端
-event sync push --type all
+# 执行一次完整的双向同步（先拉取，再推送）
+event sync
 
-# 从云端拉取数据
-event sync pull --type all
-
-# 查看同步状态
+# 查看配置与同步状态
 event sync status
+```
+
+环境变量优先。未设置时，`event` 会回退到 `event sync config --api-url <URL>
+--api-token <TOKEN> --device-id <ID>` 写入的配置文件。
+
+高级用法 —— 单向 / 按类型同步：
+
+```bash
+event sync push --type all      # 仅推送
+event sync pull --type calendar # 仅拉取,且只同步一种类型
 ```
 
 > **注意：** 日历同步仅覆盖过去一年到未来两年范围内的事件，超出该窗口的事件不会同步。
