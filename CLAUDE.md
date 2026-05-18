@@ -94,7 +94,7 @@ Configured via `.swift-format`: 2-space indentation, 100-character line length, 
 
 ## Conventions
 
-- Conventional commits per `.git-agent/config.yml` (scopes: formula, src, wrk, bin, cli, svc, fmt, cmd, ext, util, sync, mod)
+- Conventional commits per `.git-agent/config.yml` (scopes: app, fm)
 - All tests must pass before merging PRs
 
 ## Critical Constraints

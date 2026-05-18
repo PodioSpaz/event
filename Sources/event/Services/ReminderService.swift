@@ -57,6 +57,7 @@ actor ReminderService {
     tags: String? = nil,
     parentTitle: String? = nil,
     flagged: Bool? = nil,
+    locationTrigger: LocationTrigger? = nil,
     useShortcuts: Bool = true
   ) async throws -> Reminder {
     try await permissionService.ensureRemindersAccess()
@@ -68,7 +69,8 @@ actor ReminderService {
       notes: notes,
       url: url,
       dueDate: dueDate,
-      priority: priority
+      priority: priority,
+      locationTrigger: locationTrigger
     )
 
     // Step 2: Post-process with advanced features if needed (tags, flagged, parentTitle, url)
@@ -102,6 +104,8 @@ actor ReminderService {
     url: String? = nil,
     parentTitle: String? = nil,
     flagged: Bool? = nil,
+    locationTrigger: LocationTrigger? = nil,
+    clearLocation: Bool = false,
     useShortcuts: Bool = true
   ) async throws -> Reminder {
     try await permissionService.ensureRemindersAccess()
@@ -117,7 +121,9 @@ actor ReminderService {
       startDate: startDate,
       clearStart: clearStart,
       priority: priority,
-      url: url
+      url: url,
+      locationTrigger: locationTrigger,
+      clearLocation: clearLocation
     )
 
     // Step 2: Post-process with advanced features if needed
@@ -134,6 +140,20 @@ actor ReminderService {
 
     // Step 3: Fetch and return final state
     return try fetchReminder(id: id)
+  }
+
+  /// Search reminders by keyword in title and notes
+  func searchReminders(
+    keyword: String,
+    listName: String? = nil,
+    showCompleted: Bool = false
+  ) async throws -> [Reminder] {
+    let reminders = try await fetchReminders(listName: listName, showCompleted: showCompleted)
+    let lowercased = keyword.lowercased()
+    return reminders.filter { reminder in
+      reminder.title.lowercased().contains(lowercased)
+        || (reminder.notes?.lowercased().contains(lowercased) ?? false)
+    }
   }
 
   /// Delete a reminder
@@ -258,7 +278,8 @@ actor ReminderService {
     notes: String?,
     url: String?,
     dueDate: String?,
-    priority: Int?
+    priority: Int?,
+    locationTrigger: LocationTrigger?
   ) throws -> String {
     let ekReminder = EKReminder(eventStore: eventStore)
     ekReminder.title = title
@@ -295,6 +316,11 @@ actor ReminderService {
       ekReminder.priority = priority
     }
 
+    // Set location-based alarm
+    if let trigger = locationTrigger {
+      ekReminder.addAlarm(trigger.toEKAlarm())
+    }
+
     try eventStore.save(ekReminder, commit: true)
     return ekReminder.calendarItemIdentifier
   }
@@ -310,7 +336,9 @@ actor ReminderService {
     startDate: String?,
     clearStart: Bool,
     priority: Int?,
-    url: String?
+    url: String?,
+    locationTrigger: LocationTrigger?,
+    clearLocation: Bool
   ) throws {
     guard let ekReminder = eventStore.calendarItem(withIdentifier: id) as? EKReminder else {
       throw EventCLIError.notFound("Reminder with ID '\(id)' not found")
@@ -350,6 +378,15 @@ actor ReminderService {
 
     if let priority = priority {
       ekReminder.priority = priority
+    }
+
+    // Location-based alarms: clear or replace. Either operation only touches the
+    // location-based alarms; existing time-based alarms are preserved.
+    if clearLocation || locationTrigger != nil {
+      ekReminder.removeLocationAlarms()
+    }
+    if let trigger = locationTrigger {
+      ekReminder.addAlarm(trigger.toEKAlarm())
     }
 
     try eventStore.save(ekReminder, commit: true)
