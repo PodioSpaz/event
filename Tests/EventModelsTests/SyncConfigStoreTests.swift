@@ -1,5 +1,6 @@
-import EventModels
 import XCTest
+
+@testable import EventModels
 
 final class SyncConfigStoreTests: XCTestCase {
   func testSyncConfigCodable() throws {
@@ -26,5 +27,71 @@ final class SyncConfigStoreTests: XCTestCase {
     XCTAssertEqual(decoded.reminders, cursors.reminders)
     XCTAssertEqual(decoded.calendarEvents, cursors.calendarEvents)
     XCTAssertNil(decoded.reminderLists)
+  }
+
+  // MARK: - Environment-based config
+
+  func testLoadFromEnvironmentBuildsConfigWhenBothVarsPresent() throws {
+    let config = try SyncConfigStore.loadFromEnvironment([
+      "EVENT_SYNC_API_URL": "https://example.workers.dev",
+      "EVENT_SYNC_API_TOKEN": "tok",
+      "EVENT_SYNC_DEVICE_ID": "dev-1",
+    ])
+    XCTAssertEqual(config?.apiURL, "https://example.workers.dev")
+    XCTAssertEqual(config?.apiToken, "tok")
+    XCTAssertEqual(config?.deviceId, "dev-1")
+  }
+
+  func testLoadFromEnvironmentDefaultsDeviceIdToHostname() throws {
+    let config = try SyncConfigStore.loadFromEnvironment([
+      "EVENT_SYNC_API_URL": "https://example.workers.dev",
+      "EVENT_SYNC_API_TOKEN": "tok",
+    ])
+    XCTAssertEqual(config?.deviceId, ProcessInfo.processInfo.hostName)
+  }
+
+  func testLoadFromEnvironmentReturnsNilWhenUnset() throws {
+    XCTAssertNil(try SyncConfigStore.loadFromEnvironment([:]))
+  }
+
+  func testLoadFromEnvironmentTreatsEmptyStringAsAbsent() throws {
+    XCTAssertNil(
+      try SyncConfigStore.loadFromEnvironment([
+        "EVENT_SYNC_API_URL": "",
+        "EVENT_SYNC_API_TOKEN": "",
+      ]))
+  }
+
+  func testLoadFromEnvironmentThrowsWhenOnlyURLSet() {
+    XCTAssertThrowsError(
+      try SyncConfigStore.loadFromEnvironment([
+        "EVENT_SYNC_API_URL": "https://example.workers.dev"
+      ]))
+  }
+
+  func testLoadFromEnvironmentThrowsWhenOnlyTokenSet() {
+    XCTAssertThrowsError(
+      try SyncConfigStore.loadFromEnvironment(["EVENT_SYNC_API_TOKEN": "tok"]))
+  }
+
+  func testLoadFromEnvironmentThrowsForNonHTTPSURL() {
+    XCTAssertThrowsError(
+      try SyncConfigStore.loadFromEnvironment([
+        "EVENT_SYNC_API_URL": "http://example.workers.dev",
+        "EVENT_SYNC_API_TOKEN": "tok",
+      ]))
+  }
+
+  func testHasEnvironmentConfigReflectsPresence() {
+    XCTAssertTrue(
+      SyncConfigStore.hasEnvironmentConfig([
+        "EVENT_SYNC_API_URL": "https://example.workers.dev",
+        "EVENT_SYNC_API_TOKEN": "tok",
+      ]))
+    XCTAssertFalse(SyncConfigStore.hasEnvironmentConfig([:]))
+    XCTAssertFalse(
+      SyncConfigStore.hasEnvironmentConfig([
+        "EVENT_SYNC_API_URL": "https://example.workers.dev"
+      ]))
   }
 }
