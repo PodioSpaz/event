@@ -34,14 +34,14 @@ swift format --in-place --recursive Sources Package.swift
 .build/debug/event sync push [--type reminders|calendar|lists|all]   # one-directional
 .build/debug/event sync pull [--type reminders|calendar|lists|all]   # one-directional
 
-# Worker development (Cloudflare)
-cd worker && pnpm install
-cd worker && wrangler dev           # local dev
-cd worker && wrangler deploy        # deploy
-cd worker && pnpm run db:migrate          # local D1 migration
-cd worker && pnpm run db:migrate:remote   # remote D1 migration
-cd worker && pnpm test                    # worker tests (vitest-pool-workers)
-cd worker && pnpm run typecheck           # worker type check
+# Worker development (Cloudflare) -- run from skills/apple-events/references/worker/
+pnpm install
+wrangler dev                              # local dev
+wrangler deploy                           # deploy
+pnpm run db:migrate                       # local D1 migration
+pnpm run db:migrate:remote                # remote D1 migration
+pnpm test                                 # worker tests (vitest-pool-workers)
+pnpm run typecheck                        # worker type check
 ```
 
 ## Architecture
@@ -57,7 +57,7 @@ Pure Swift CLI for managing Apple Reminders and Calendar via EventKit, with Clou
 | `EventCommands` | Library | Shared command helpers |
 | `event` | Executable | Main CLI (reminders, calendar, sync commands) |
 | `event-sync` | Executable | Standalone sync tool |
-| `worker/` | TypeScript | Cloudflare Worker API (Hono + D1) |
+| `skills/apple-events/references/worker/` | TypeScript | Cloudflare Worker API (Hono + D1) |
 
 Dependencies flow inward: Commands -> Services -> EventKit. Both executables require `-parse-as-library` compiler flag (set in Package.swift) for ArgumentParser `@main`.
 
@@ -87,7 +87,7 @@ Custom `EventCLIError` enum provides structured errors: `permissionDenied`, `not
 
 **Config storage**: `SyncConfigStore.load()` reads connection settings from environment variables first (`EVENT_SYNC_API_URL`, `EVENT_SYNC_API_TOKEN`, optional `EVENT_SYNC_DEVICE_ID` which defaults to the hostname), falling back to `~/.config/event-sync/config.json` (written by `event sync config`). Setting exactly one of the two required env vars is an error. Sync state always lives in `~/.config/event-sync/` with an exclusive file lock (`.lock`): `cursors.json`, `id-mapping.json` (local<->remote), `state.json` — all mode `0o600`. API URL must be HTTPS.
 
-**Worker** (`worker/`): Hono framework on Cloudflare Workers with D1 database. Endpoints at `/api/v1/{entity}/{operation}` for push (POST), pull (GET with cursor pagination), delete (DELETE, soft-delete). Pull accepts a `device` query param so a device never pulls back its own writes. Auth via `API_TOKEN` secret (Bearer token). `wrangler.toml` needs actual `database_id`. Schema lives in `worker/migrations/` (numbered files applied via `wrangler d1 migrations apply`); a daily cron trigger purges records soft-deleted over 30 days ago.
+**Worker** (`skills/apple-events/references/worker/`): Hono framework on Cloudflare Workers with D1 database. Endpoints at `/api/v1/{entity}/{operation}` for push (POST), pull (GET with cursor pagination), delete (DELETE, soft-delete). Pull accepts a `device` query param so a device never pulls back its own writes. Auth via `API_TOKEN` secret (Bearer token). `wrangler.toml` needs actual `database_id`. Schema lives in `skills/apple-events/references/worker/migrations/` (numbered files applied via `wrangler d1 migrations apply`); a daily cron trigger purges records soft-deleted over 30 days ago. The Worker is bundled inside the `apple-events` skill so it ships with `npx skills add`.
 
 ## Code Style
 

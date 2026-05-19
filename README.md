@@ -111,7 +111,7 @@ through a Cloudflare Worker backed by D1.
 #### 1. Deploy the Worker (one-time)
 
 ```bash
-cd worker
+cd skills/apple-events/references/worker
 pnpm install
 pnpm exec wrangler login
 pnpm exec wrangler d1 create event-sync   # copy the database_id into wrangler.toml
@@ -162,12 +162,12 @@ For more commands, run `event --help`.
 
 ## Agent Skill
 
-The `apple-events` skill lives in the [`FradSer/skills`](https://github.com/FradSer/skills) repository and lets AI agents manage your Apple Reminders and Calendar through `event`.
+The [`apple-events`](skills/apple-events/) skill lets AI agents manage your Apple Reminders and Calendar through `event`.
 
 1. Ensure `event` CLI is installed and in your system PATH.
 2. Install the skill:
    ```bash
-   npx skills add https://github.com/FradSer/skills --skill apple-events
+   npx skills add https://github.com/FradSer/event --skill apple-events
    ```
 
 ## License

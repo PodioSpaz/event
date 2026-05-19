@@ -110,7 +110,7 @@ event reminders lists create --name "工作"
 #### 1. 部署 Worker（一次性）
 
 ```bash
-cd worker
+cd skills/apple-events/references/worker
 pnpm install
 pnpm exec wrangler login
 pnpm exec wrangler d1 create event-sync   # 把输出的 database_id 填入 wrangler.toml
@@ -156,12 +156,12 @@ event sync pull --type calendar # 仅拉取，且只同步一种类型
 
 ## Agent Skill
 
-`apple-events` skill 现已迁移到 [`FradSer/skills`](https://github.com/FradSer/skills) 仓库中，可让 AI agent 通过 `event` 直接管理你的 Apple 提醒事项和日历。
+[`apple-events`](skills/apple-events/) skill 可让 AI agent 通过 `event` 直接管理你的 Apple 提醒事项和日历。
 
 1. 确保 `event` CLI 已安装并在系统 PATH 中。
 2. 安装 skill：
    ```bash
-   npx skills add https://github.com/FradSer/skills --skill apple-events
+   npx skills add https://github.com/FradSer/event --skill apple-events
    ```
 
 ## 许可证
