@@ -61,6 +61,11 @@ describe("auth", () => {
     const res = await SELF.fetch(`${BASE}/api/v1/reminders/pull`);
     expect(res.status).toBe(401);
   });
+
+  it("rejects the purge endpoint without a bearer token", async () => {
+    const res = await SELF.fetch(`${BASE}/api/v1/purge`, { method: "POST" });
+    expect(res.status).toBe(401);
+  });
 });
 
 describe("push / pull", () => {
@@ -178,6 +183,31 @@ describe("pagination", () => {
 
     const ids = new Set([...first.items, ...second.items].map((item) => item.id));
     expect(ids.size).toBe(150);
+  });
+});
+
+describe("cursor validation", () => {
+  it("rejects a cursor with an empty timestamp segment", async () => {
+    const res = await SELF.fetch(
+      `${BASE}/api/v1/reminders/pull?cursor=${encodeURIComponent("|r1")}`,
+      { headers: AUTH }
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("does not re-emit an item whose id contains a pipe across cursor pages", async () => {
+    await push("reminders", "device-a", [
+      { id: "a", data: { title: "first" }, last_modified: "2026-03-10T10:00:00Z" },
+      { id: "a|b", data: { title: "piped" }, last_modified: "2026-03-10T10:00:00Z" },
+    ]);
+
+    const first = await pull("reminders", { device: "device-b" });
+    expect(first.items.map((item) => item.id).sort()).toEqual(["a", "a|b"]);
+
+    // The returned cursor ends in "|a|b"; only by parsing the id segment as
+    // everything after the first pipe is "a|b" excluded from the next page.
+    const second = await pull("reminders", { device: "device-b", cursor: first.cursor });
+    expect(second.items).toHaveLength(0);
   });
 });
 

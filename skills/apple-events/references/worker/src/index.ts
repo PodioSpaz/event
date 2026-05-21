@@ -179,7 +179,12 @@ app.get("/api/v1/:entity/pull", async (c) => {
   let cursorId: string;
 
   if (rawCursor.includes("|")) {
-    [cursorTime, cursorId] = rawCursor.split("|", 2);
+    const pipeIdx = rawCursor.indexOf("|");
+    cursorTime = rawCursor.slice(0, pipeIdx);
+    cursorId = rawCursor.slice(pipeIdx + 1);
+    if (!cursorTime) {
+      return c.json({ error: "Invalid cursor" }, 400);
+    }
   } else {
     // Sentinel matches the SQLite datetime('now') format ("YYYY-MM-DD HH:MM:SS").
     cursorTime = rawCursor || "1970-01-01 00:00:00";
