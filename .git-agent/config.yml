@@ -1,5 +1,9 @@
 scopes:
-    - name: app
-      description: application logic, models, services, and CLI commands in Sources/; does not cover testing or CI
+    - name: src
+      description: application logic, models, services, and CLI commands in Sources/; does not cover tests or worker code
+    - name: tst
+      description: test suites for verification of models, services, and sync logic in Tests/; does not cover production code
+    - name: skl
+      description: skills, cloud sync references, and worker implementation in skills/; does not cover main application CLI code
     - name: fm
-      description: Homebrew formula definition for package distribution in Formula/; does not cover release workflows
+      description: Homebrew formula definitions for package distribution in Formula/; does not cover release automation
