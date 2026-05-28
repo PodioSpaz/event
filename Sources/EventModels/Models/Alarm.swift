@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Alarm Model
 
-public struct Alarm: Codable, Sendable {
+public struct Alarm: Codable, Sendable, Equatable {
   public let relativeOffset: Double?
   public let absoluteDate: String?
   public let locationTrigger: LocationTrigger?

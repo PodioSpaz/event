@@ -94,8 +94,8 @@ struct ReminderCommands: AsyncParsableCommand {
     var json = false
 
     func run() async throws {
-      let service = ReminderService()
-      let reminders = try await service.fetchReminders(
+      let backend = try await BackendFactory.makeRemindersBackend()
+      let reminders = try await backend.fetchReminders(
         listName: list,
         showCompleted: completed
       )
@@ -146,23 +146,41 @@ struct ReminderCommands: AsyncParsableCommand {
     var json = false
 
     func run() async throws {
-      let locationTrigger = try locationOptions.resolveTrigger()
-
-      let service = ReminderService()
-
-      let reminder = try await service.createReminder(
-        title: title,
-        listName: list,
-        notes: notes,
-        url: url,
-        dueDate: due,
-        priority: priority,
-        tags: tags,
-        parentTitle: parentTitle,
-        flagged: flagged,
-        locationTrigger: locationTrigger,
-        useShortcuts: !noShortcuts
-      )
+      #if canImport(EventKit)
+        let locationTrigger = try locationOptions.resolveTrigger()
+        let service = ReminderService()
+        let reminder = try await service.createReminder(
+          title: title,
+          listName: list,
+          notes: notes,
+          url: url,
+          dueDate: due,
+          priority: priority,
+          tags: tags,
+          parentTitle: parentTitle,
+          flagged: flagged,
+          locationTrigger: locationTrigger,
+          useShortcuts: !noShortcuts
+        )
+      #else
+        let backend = try await BackendFactory.makeRemindersBackend()
+        let params = CreateReminderParams(
+          title: title,
+          listName: list,
+          notes: notes,
+          url: url,
+          dueDate: due,
+          priority: priority ?? 0
+        )
+        let reminder = try await backend.createReminder(params)
+        if tags != nil || parentTitle != nil || flagged != nil
+          || locationOptions.isPresent || noShortcuts
+        {
+          print(
+            "Note: tags, parentTitle, flagged, location triggers, and shortcuts are macOS-only features."
+          )
+        }
+      #endif
 
       let formatter: OutputFormatter = json ? JSONFormatter() : MarkdownFormatter()
       print(formatter.format(reminder))
@@ -231,7 +249,7 @@ struct ReminderCommands: AsyncParsableCommand {
       if clearStart, start != nil {
         throw EventCLIError.invalidInput("Use either --start or --clear-start, not both.")
       }
-      // Check against raw flag presence — not the parsed trigger — so a partial location
+      // Check against raw flag presence -- not the parsed trigger -- so a partial location
       // input alongside --clear-location surfaces the more helpful mutual-exclusion error
       // rather than the "must be provided together" one.
       if clearLocation, locationOptions.isPresent {
@@ -240,28 +258,49 @@ struct ReminderCommands: AsyncParsableCommand {
         )
       }
 
-      let locationTrigger = try locationOptions.resolveTrigger()
-
-      let service = ReminderService()
-
-      let reminder = try await service.updateReminder(
-        id: id,
-        title: title,
-        completed: completed ? true : nil,
-        notes: notes,
-        dueDate: due,
-        clearDue: clearDue,
-        startDate: start,
-        clearStart: clearStart,
-        priority: priority,
-        tags: tags,
-        url: url,
-        parentTitle: parentTitle,
-        flagged: flagged,
-        locationTrigger: locationTrigger,
-        clearLocation: clearLocation,
-        useShortcuts: !noShortcuts
-      )
+      #if canImport(EventKit)
+        let locationTrigger = try locationOptions.resolveTrigger()
+        let service = ReminderService()
+        let reminder = try await service.updateReminder(
+          id: id,
+          title: title,
+          completed: completed ? true : nil,
+          notes: notes,
+          dueDate: due,
+          clearDue: clearDue,
+          startDate: start,
+          clearStart: clearStart,
+          priority: priority,
+          tags: tags,
+          url: url,
+          parentTitle: parentTitle,
+          flagged: flagged,
+          locationTrigger: locationTrigger,
+          clearLocation: clearLocation,
+          useShortcuts: !noShortcuts
+        )
+      #else
+        let backend = try await BackendFactory.makeRemindersBackend()
+        let params = UpdateReminderParams(
+          title: title,
+          completed: completed ? true : nil,
+          notes: notes,
+          dueDate: due,
+          clearDue: clearDue,
+          startDate: start,
+          clearStart: clearStart,
+          priority: priority,
+          url: url
+        )
+        let reminder = try await backend.updateReminder(id: id, params: params)
+        if tags != nil || parentTitle != nil || flagged != nil
+          || locationOptions.isPresent || clearLocation || noShortcuts
+        {
+          print(
+            "Note: tags, parentTitle, flagged, location triggers, and shortcuts are macOS-only features."
+          )
+        }
+      #endif
 
       let formatter: OutputFormatter = json ? JSONFormatter() : MarkdownFormatter()
       print(formatter.format(reminder))
@@ -277,8 +316,8 @@ struct ReminderCommands: AsyncParsableCommand {
     var id: String
 
     func run() async throws {
-      let service = ReminderService()
-      try await service.deleteReminder(id: id)
+      let backend = try await BackendFactory.makeRemindersBackend()
+      try await backend.deleteReminder(id: id)
       print("Reminder deleted successfully")
     }
   }
@@ -301,12 +340,22 @@ struct ReminderCommands: AsyncParsableCommand {
     var json = false
 
     func run() async throws {
-      let service = ReminderService()
-      let reminders = try await service.searchReminders(
-        keyword: keyword,
-        listName: list,
-        showCompleted: completed
-      )
+      #if canImport(EventKit)
+        let service = ReminderService()
+        let reminders = try await service.searchReminders(
+          keyword: keyword,
+          listName: list,
+          showCompleted: completed
+        )
+      #else
+        let backend = try await BackendFactory.makeRemindersBackend()
+        let all = try await backend.fetchReminders(listName: list, showCompleted: completed)
+        let lowercased = keyword.lowercased()
+        let reminders = all.filter { reminder in
+          reminder.title.lowercased().contains(lowercased)
+            || (reminder.notes?.lowercased().contains(lowercased) ?? false)
+        }
+      #endif
 
       let formatter: OutputFormatter = json ? JSONFormatter() : MarkdownFormatter()
       print(formatter.format(reminders))

@@ -4,6 +4,10 @@ import Foundation
 import NIOCore
 import NIOFoundationCompat
 
+// MARK: - D1 Client Conformance
+
+extension D1SyncClient: D1Client {}
+
 // MARK: - D1 Sync Client
 
 public actor D1SyncClient {

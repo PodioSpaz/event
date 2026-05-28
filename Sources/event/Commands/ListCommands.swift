@@ -20,8 +20,8 @@ struct ListCommands: AsyncParsableCommand {
     var json = false
 
     func run() async throws {
-      let service = ListService()
-      let lists = try await service.fetchLists()
+      let backend = try await BackendFactory.makeListsBackend()
+      let lists = try await backend.fetchLists()
 
       let formatter: OutputFormatter = json ? JSONFormatter() : MarkdownFormatter()
       print(formatter.format(lists))
@@ -40,8 +40,13 @@ struct ListCommands: AsyncParsableCommand {
     var json = false
 
     func run() async throws {
-      let service = ListService()
-      let list = try await service.createList(name: name)
+      #if canImport(EventKit)
+        let service = ListService()
+        let list = try await service.createList(name: name)
+      #else
+        let backend = try await BackendFactory.makeListsBackend()
+        let list = try await backend.createList(title: name, color: nil)
+      #endif
 
       let formatter: OutputFormatter = json ? JSONFormatter() : MarkdownFormatter()
       print(formatter.format(list))
@@ -63,8 +68,13 @@ struct ListCommands: AsyncParsableCommand {
     var json = false
 
     func run() async throws {
-      let service = ListService()
-      let list = try await service.updateList(id: id, name: name)
+      #if canImport(EventKit)
+        let service = ListService()
+        let list = try await service.updateList(id: id, name: name)
+      #else
+        let backend = try await BackendFactory.makeListsBackend()
+        let list = try await backend.updateList(id: id, title: name, color: nil)
+      #endif
 
       let formatter: OutputFormatter = json ? JSONFormatter() : MarkdownFormatter()
       print(formatter.format(list))
@@ -80,8 +90,8 @@ struct ListCommands: AsyncParsableCommand {
     var id: String
 
     func run() async throws {
-      let service = ListService()
-      try await service.deleteList(id: id)
+      let backend = try await BackendFactory.makeListsBackend()
+      try await backend.deleteList(id: id)
       print("List deleted successfully")
     }
   }

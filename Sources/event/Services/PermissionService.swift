@@ -1,69 +1,73 @@
-import EventKit
-import EventModels
-import Foundation
+#if canImport(EventKit)
 
-// MARK: - Permission Service
+  import EventKit
+  import EventModels
+  import Foundation
 
-actor PermissionService {
-  private let eventStore = EKEventStore()
+  // MARK: - Permission Service
 
-  /// Ensures the app has access to reminders
-  func ensureRemindersAccess() async throws {
-    let status = EKEventStore.authorizationStatus(for: .reminder)
+  actor PermissionService {
+    private let eventStore = EKEventStore()
 
-    switch status {
-    case .notDetermined:
-      let granted = try await eventStore.requestFullAccessToReminders()
-      if !granted {
+    /// Ensures the app has access to reminders
+    func ensureRemindersAccess() async throws {
+      let status = EKEventStore.authorizationStatus(for: .reminder)
+
+      switch status {
+      case .notDetermined:
+        let granted = try await eventStore.requestFullAccessToReminders()
+        if !granted {
+          throw EventCLIError.permissionDenied(
+            "Reminders access was denied. Please grant access in System Settings > Privacy & Security > Reminders."
+          )
+        }
+      case .restricted:
+        throw EventCLIError.permissionDenied("Reminders access is restricted by system policy.")
+      case .denied:
         throw EventCLIError.permissionDenied(
           "Reminders access was denied. Please grant access in System Settings > Privacy & Security > Reminders."
         )
+      case .fullAccess:
+        // Already have access
+        break
+      case .writeOnly:
+        throw EventCLIError.permissionDenied(
+          "Only write access to reminders. Full access is required."
+        )
+      @unknown default:
+        throw EventCLIError.permissionDenied("Unknown permission status for reminders.")
       }
-    case .restricted:
-      throw EventCLIError.permissionDenied("Reminders access is restricted by system policy.")
-    case .denied:
-      throw EventCLIError.permissionDenied(
-        "Reminders access was denied. Please grant access in System Settings > Privacy & Security > Reminders."
-      )
-    case .fullAccess:
-      // Already have access
-      break
-    case .writeOnly:
-      throw EventCLIError.permissionDenied(
-        "Only write access to reminders. Full access is required."
-      )
-    @unknown default:
-      throw EventCLIError.permissionDenied("Unknown permission status for reminders.")
     }
-  }
 
-  /// Ensures the app has access to calendar events
-  func ensureCalendarAccess() async throws {
-    let status = EKEventStore.authorizationStatus(for: .event)
+    /// Ensures the app has access to calendar events
+    func ensureCalendarAccess() async throws {
+      let status = EKEventStore.authorizationStatus(for: .event)
 
-    switch status {
-    case .notDetermined:
-      let granted = try await eventStore.requestFullAccessToEvents()
-      if !granted {
+      switch status {
+      case .notDetermined:
+        let granted = try await eventStore.requestFullAccessToEvents()
+        if !granted {
+          throw EventCLIError.permissionDenied(
+            "Calendar access was denied. Please grant access in System Settings > Privacy & Security > Calendars."
+          )
+        }
+      case .restricted:
+        throw EventCLIError.permissionDenied("Calendar access is restricted by system policy.")
+      case .denied:
         throw EventCLIError.permissionDenied(
           "Calendar access was denied. Please grant access in System Settings > Privacy & Security > Calendars."
         )
+      case .fullAccess:
+        // Already have access
+        break
+      case .writeOnly:
+        throw EventCLIError.permissionDenied(
+          "Only write access to calendar. Full access is required."
+        )
+      @unknown default:
+        throw EventCLIError.permissionDenied("Unknown permission status for calendar.")
       }
-    case .restricted:
-      throw EventCLIError.permissionDenied("Calendar access is restricted by system policy.")
-    case .denied:
-      throw EventCLIError.permissionDenied(
-        "Calendar access was denied. Please grant access in System Settings > Privacy & Security > Calendars."
-      )
-    case .fullAccess:
-      // Already have access
-      break
-    case .writeOnly:
-      throw EventCLIError.permissionDenied(
-        "Only write access to calendar. Full access is required."
-      )
-    @unknown default:
-      throw EventCLIError.permissionDenied("Unknown permission status for calendar.")
     }
   }
-}
+
+#endif

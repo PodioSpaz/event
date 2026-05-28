@@ -29,12 +29,28 @@ struct CalendarCommands: AsyncParsableCommand {
     var json = false
 
     func run() async throws {
-      let service = CalendarService()
-      let events = try await service.fetchEvents(
-        startDate: start,
-        endDate: end,
-        calendarName: calendar
-      )
+      #if canImport(EventKit)
+        let service = CalendarService()
+        let events = try await service.fetchEvents(
+          startDate: start,
+          endDate: end,
+          calendarName: calendar
+        )
+      #else
+        let backend = try await BackendFactory.makeCalendarBackend()
+        let resolvedStart =
+          start
+          ?? DateFormatter.eventDate.string(from: Date())
+        let resolvedEnd =
+          end
+          ?? DateFormatter.eventDate.string(
+            from: Calendar.current.date(byAdding: .month, value: 1, to: Date()) ?? Date())
+        let events = try await backend.fetchEvents(
+          start: resolvedStart,
+          end: resolvedEnd,
+          calendarName: calendar
+        )
+      #endif
 
       let formatter: OutputFormatter = json ? JSONFormatter() : MarkdownFormatter()
       print(formatter.format(events))
@@ -73,15 +89,30 @@ struct CalendarCommands: AsyncParsableCommand {
     var json = false
 
     func run() async throws {
-      let service = CalendarService()
-      let event = try await service.createEvent(
-        title: title,
-        startDate: start,
-        endDate: end,
-        calendarName: calendar,
-        location: location,
-        notes: notes
-      )
+      #if canImport(EventKit)
+        let service = CalendarService()
+        let event = try await service.createEvent(
+          title: title,
+          startDate: start,
+          endDate: end,
+          calendarName: calendar,
+          location: location,
+          notes: notes
+        )
+      #else
+        let backend = try await BackendFactory.makeCalendarBackend()
+        let isAllDay = Date.isAllDayFormat(start) && Date.isAllDayFormat(end)
+        let params = CreateEventParams(
+          title: title,
+          calendarName: calendar,
+          startDate: start,
+          endDate: end,
+          isAllDay: isAllDay,
+          location: location,
+          notes: notes
+        )
+        let event = try await backend.createEvent(params)
+      #endif
 
       let formatter: OutputFormatter = json ? JSONFormatter() : MarkdownFormatter()
       print(formatter.format(event))
@@ -121,15 +152,27 @@ struct CalendarCommands: AsyncParsableCommand {
     var json = false
 
     func run() async throws {
-      let service = CalendarService()
-      let event = try await service.updateEvent(
-        id: id,
-        title: title,
-        startDate: start,
-        endDate: end,
-        location: location,
-        notes: notes
-      )
+      #if canImport(EventKit)
+        let service = CalendarService()
+        let event = try await service.updateEvent(
+          id: id,
+          title: title,
+          startDate: start,
+          endDate: end,
+          location: location,
+          notes: notes
+        )
+      #else
+        let backend = try await BackendFactory.makeCalendarBackend()
+        let params = UpdateEventParams(
+          title: title,
+          startDate: start,
+          endDate: end,
+          location: location,
+          notes: notes
+        )
+        let event = try await backend.updateEvent(id: id, params: params)
+      #endif
 
       let formatter: OutputFormatter = json ? JSONFormatter() : MarkdownFormatter()
       print(formatter.format(event))
@@ -148,8 +191,13 @@ struct CalendarCommands: AsyncParsableCommand {
     var span: String = "this"
 
     func run() async throws {
-      let service = CalendarService()
-      try await service.deleteEvent(id: id, span: span)
+      #if canImport(EventKit)
+        let service = CalendarService()
+        try await service.deleteEvent(id: id, span: span)
+      #else
+        let backend = try await BackendFactory.makeCalendarBackend()
+        try await backend.deleteEvent(id: id)
+      #endif
       print("Event deleted successfully")
     }
   }

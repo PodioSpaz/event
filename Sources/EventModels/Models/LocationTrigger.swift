@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Location Trigger Model
 
-public struct LocationTrigger: Codable, Sendable {
+public struct LocationTrigger: Codable, Sendable, Equatable {
   public enum Proximity: String, Codable, Sendable {
     case enter, leave
   }

@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Recurrence Rule Model
 
-public struct RecurrenceRule: Codable, Sendable {
+public struct RecurrenceRule: Codable, Sendable, Equatable {
   public let frequency: String
   public let interval: Int
   public let daysOfWeek: [String]?
