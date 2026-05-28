@@ -211,6 +211,22 @@ describe("cursor validation", () => {
   });
 });
 
+describe("data integrity", () => {
+  it("skips rows with corrupt JSON instead of failing the pull", async () => {
+    await env.DB.prepare(
+      "INSERT INTO reminders (id, data, last_modified, updated_at, deleted) VALUES (?, ?, ?, datetime('now'), 0)"
+    )
+      .bind("bad-json", "{ not json", "2026-03-10T10:00:00Z")
+      .run();
+    await push("reminders", "device-a", [
+      { id: "good", data: { title: "ok" }, last_modified: "2026-03-10T10:00:00Z" },
+    ]);
+
+    const body = await pull("reminders", { device: "device-b" });
+    expect(body.items.map((item) => item.id)).toEqual(["good"]);
+  });
+});
+
 describe("purge", () => {
   it("reports zero when no soft-deleted records are old enough", async () => {
     await push("reminders", "device-a", [

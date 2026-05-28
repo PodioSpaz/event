@@ -46,7 +46,14 @@ distinct, and a device never pulls back its own writes.
 ## Notes
 
 - Calendar sync covers events from one year in the past to two years ahead;
-  events outside this window are not synced.
+  events outside this window are not pushed or pulled, but are not deleted from
+  the cloud while they still exist locally.
 - Conflicts resolve by last-write-wins: a pull never overwrites a local copy
-  modified more recently than the server's version.
+  modified more recently than the server's version. When EventKit provides no
+  modification or creation timestamp, the local copy is left unchanged until the
+  next push.
+- Reminder lists carry no modification timestamp; concurrent renames resolve
+  by last-write-wins on pull with no conflict warning.
+- Advanced reminder fields (`tags`, `flagged`, subtask relationships) are not
+  applied during sync pull; only basic EventKit fields are synced.
 - A daily cron on the Worker purges records soft-deleted over 30 days ago.

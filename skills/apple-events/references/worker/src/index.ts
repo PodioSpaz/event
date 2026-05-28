@@ -204,13 +204,22 @@ app.get("/api/v1/:entity/pull", async (c) => {
   const hasMore = results.length === limit;
   const page = hasMore ? results.slice(0, limit - 1) : results;
 
-  const items = page.map((row) => ({
-    id: row.id,
-    data: JSON.parse(row.data),
-    deleted: row.deleted === 1,
-    updated_at: row.updated_at,
-    last_modified: row.last_modified,
-  }));
+  const items = page.flatMap((row) => {
+    try {
+      return [
+        {
+          id: row.id,
+          data: JSON.parse(row.data),
+          deleted: row.deleted === 1,
+          updated_at: row.updated_at,
+          last_modified: row.last_modified,
+        },
+      ];
+    } catch (parseError) {
+      console.error(`Failed to parse ${c.req.param("entity")} item ${row.id}:`, parseError);
+      return [];
+    }
+  });
 
   const last = page[page.length - 1];
   const newCursor = last ? `${last.updated_at}|${last.id}` : rawCursor;

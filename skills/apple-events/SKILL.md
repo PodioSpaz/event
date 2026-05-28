@@ -82,4 +82,7 @@ Sync requires a configured Cloudflare D1 backend: set the `EVENT_SYNC_API_URL` a
 - **Dates**: timed values use `yyyy-MM-dd HH:mm:ss` (e.g. "2026-03-10 14:00:00"); all-day calendar events use `yyyy-MM-dd`.
 - **Priority**: 1 = High, 5 = Medium, 9 = Low, 0 = None.
 - **Advanced fields**: `tags`, `flagged`, `url`, and subtask relationships (`parentTitle`) are handled via the `AdvancedReminderEdit` Shortcut. Without it (or with `--no-shortcuts`) they are skipped. The reminder `notes` field holds plain user notes only — no metadata block.
-- **Calendar sync window**: only events from one year in the past to two years ahead are synced.
+- **Calendar sync window**: only events from one year in the past to two years ahead are pushed and pulled. Events moved outside this window remain in the cloud until explicitly deleted locally.
+- **Sync conflicts**: timed entities use last-write-wins using modification timestamps (falling back to creation time). Local copies without any timestamp are not overwritten on pull.
+- **Reminder lists**: no per-list modification timestamp — concurrent renames last-write-wins on pull.
+- **Advanced fields on sync**: `tags`, `flagged`, `url`, and subtask relationships are not restored during sync pull; use local Shortcut-backed commands for those fields.
