@@ -15,65 +15,59 @@ final class BackendFactoryTests: XCTestCase {
   // MARK: - Reminders Backend
 
   func testMakeRemindersBackend() async throws {
-    #if canImport(EventKit)
     let backend = try await BackendFactory.makeRemindersBackend()
-    XCTAssertTrue(
-      backend is ReminderService,
-      "macOS should return ReminderService, got \(type(of: backend))"
-    )
+    #if canImport(EventKit)
+      XCTAssertTrue(
+        backend is ReminderService,
+        "macOS should return ReminderService, got \(type(of: backend))"
+      )
     #else
-    // On Linux without config, the factory should throw
-    do {
-      _ = try await BackendFactory.makeRemindersBackend()
-      XCTFail("Expected error when Cloudflare config is missing on Linux")
-    } catch {
-      // Expected: CloudflareConfig.load() throws because no config exists
-    }
+      XCTAssertTrue(
+        backend is SQLiteReminderService,
+        "Linux should return SQLiteReminderService, got \(type(of: backend))"
+      )
     #endif
   }
 
   // MARK: - Calendar Backend
 
   func testMakeCalendarBackend() async throws {
-    #if canImport(EventKit)
     let backend = try await BackendFactory.makeCalendarBackend()
-    XCTAssertTrue(
-      backend is CalendarService,
-      "macOS should return CalendarService, got \(type(of: backend))"
-    )
+    #if canImport(EventKit)
+      XCTAssertTrue(
+        backend is CalendarService,
+        "macOS should return CalendarService, got \(type(of: backend))"
+      )
     #else
-    do {
-      _ = try await BackendFactory.makeCalendarBackend()
-      XCTFail("Expected error when Cloudflare config is missing on Linux")
-    } catch {
-      // Expected
-    }
+      XCTAssertTrue(
+        backend is SQLiteCalendarService,
+        "Linux should return SQLiteCalendarService, got \(type(of: backend))"
+      )
     #endif
   }
 
   // MARK: - Lists Backend
 
   func testMakeListsBackend() async throws {
-    #if canImport(EventKit)
     let backend = try await BackendFactory.makeListsBackend()
-    XCTAssertTrue(
-      backend is ListService,
-      "macOS should return ListService, got \(type(of: backend))"
-    )
+    #if canImport(EventKit)
+      XCTAssertTrue(
+        backend is ListService,
+        "macOS should return ListService, got \(type(of: backend))"
+      )
     #else
-    do {
-      _ = try await BackendFactory.makeListsBackend()
-      XCTFail("Expected error when Cloudflare config is missing on Linux")
-    } catch {
-      // Expected
-    }
+      XCTAssertTrue(
+        backend is SQLiteListService,
+        "Linux should return SQLiteListService, got \(type(of: backend))"
+      )
     #endif
   }
 
-  // MARK: - Linux Config Required
+  // MARK: - Cloudflare Config Validation
 
-  func testLinuxConfigRequired() async throws {
-    #if canImport(EventKit)
+  /// Setting exactly one of the two required connection variables is an error
+  /// on every platform. Local backends no longer require config, but sync does.
+  func testConfigRequiresBothVariables() throws {
     XCTAssertThrowsError(
       try CloudflareConfig.loadFromEnvironment(
         [SyncConfigStore.EnvKey.apiURL: "https://example.com"]
@@ -92,27 +86,5 @@ final class BackendFactoryTests: XCTestCase {
         XCTFail("Expected invalidInput, got \(cliError)")
       }
     }
-    #else
-    do {
-      _ = try await BackendFactory.makeRemindersBackend()
-      XCTFail("Expected error when Cloudflare config is missing on Linux")
-    } catch {
-      // Expected
-    }
-
-    do {
-      _ = try await BackendFactory.makeCalendarBackend()
-      XCTFail("Expected error when Cloudflare config is missing on Linux")
-    } catch {
-      // Expected
-    }
-
-    do {
-      _ = try await BackendFactory.makeListsBackend()
-      XCTFail("Expected error when Cloudflare config is missing on Linux")
-    } catch {
-      // Expected
-    }
-    #endif
   }
 }

@@ -55,26 +55,19 @@ struct SyncCommands: AsyncParsableCommand {
     var json = false
 
     func run() async throws {
-      #if canImport(EventKit)
-        let lockFd = try SyncConfigStore.acquireLock()
-        defer { SyncConfigStore.releaseLock(lockFd) }
+      let lockFd = try SyncConfigStore.acquireLock()
+      defer { SyncConfigStore.releaseLock(lockFd) }
 
-        let service = try await BackendFactory.makeSyncService()
-        do {
-          let pullOutput = try await runPull(service, type: type)
-          let pushOutput = try await runPush(service, type: type)
-          try await service.shutdown()
-          printFullSyncOutput(pull: pullOutput, push: pushOutput, json: json)
-        } catch {
-          try? await service.shutdown()
-          throw error
-        }
-      #else
-        throw EventCLIError.unknown(
-          "Full bidirectional sync requires macOS. Use 'event sync push' or 'event sync pull' "
-            + "for one-directional sync, or 'event sync reminders/calendar' for D1-direct access."
-        )
-      #endif
+      let service = try await BackendFactory.makeSyncService()
+      do {
+        let pullOutput = try await runPull(service, type: type)
+        let pushOutput = try await runPush(service, type: type)
+        try await service.shutdown()
+        printFullSyncOutput(pull: pullOutput, push: pushOutput, json: json)
+      } catch {
+        try? await service.shutdown()
+        throw error
+      }
     }
   }
 
@@ -98,24 +91,18 @@ struct SyncCommands: AsyncParsableCommand {
     var json = false
 
     func run() async throws {
-      #if canImport(EventKit)
-        let lockFd = try SyncConfigStore.acquireLock()
-        defer { SyncConfigStore.releaseLock(lockFd) }
+      let lockFd = try SyncConfigStore.acquireLock()
+      defer { SyncConfigStore.releaseLock(lockFd) }
 
-        let service = try await BackendFactory.makeSyncService()
-        do {
-          let output = try await runPush(service, type: type)
-          try await service.shutdown()
-          printPushOutput(output, json: json)
-        } catch {
-          try? await service.shutdown()
-          throw error
-        }
-      #else
-        throw EventCLIError.unknown(
-          "Push sync requires macOS. Use 'event sync reminders/calendar' for D1-direct access."
-        )
-      #endif
+      let service = try await BackendFactory.makeSyncService()
+      do {
+        let output = try await runPush(service, type: type)
+        try await service.shutdown()
+        printPushOutput(output, json: json)
+      } catch {
+        try? await service.shutdown()
+        throw error
+      }
     }
   }
 
@@ -140,78 +127,68 @@ struct SyncCommands: AsyncParsableCommand {
     var json = false
 
     func run() async throws {
-      #if canImport(EventKit)
-        let lockFd = try SyncConfigStore.acquireLock()
-        defer { SyncConfigStore.releaseLock(lockFd) }
+      let lockFd = try SyncConfigStore.acquireLock()
+      defer { SyncConfigStore.releaseLock(lockFd) }
 
-        let service = try await BackendFactory.makeSyncService()
-        do {
-          let output = try await runPull(service, type: type)
-          try await service.shutdown()
-          printPullOutput(output, json: json)
-        } catch {
-          try? await service.shutdown()
-          throw error
-        }
-      #else
-        throw EventCLIError.unknown(
-          "Pull sync requires macOS. Use 'event sync reminders/calendar' for D1-direct access."
-        )
-      #endif
+      let service = try await BackendFactory.makeSyncService()
+      do {
+        let output = try await runPull(service, type: type)
+        try await service.shutdown()
+        printPullOutput(output, json: json)
+      } catch {
+        try? await service.shutdown()
+        throw error
+      }
     }
   }
 }
 
 // MARK: - Sync Sequencing
 
-#if canImport(EventKit)
-
-  /// Pushes the requested entity types, returning results keyed by entity.
-  func runPush(_ service: SyncService, type: SyncEntityType) async throws -> [String: PushResult] {
-    var output: [String: PushResult] = [:]
-    switch type {
-    case .reminders:
-      output["reminders"] = try await service.pushReminders()
-    case .calendar:
-      output["calendarEvents"] = try await service.pushEvents()
-    case .lists:
-      output["reminderLists"] = try await service.pushLists()
-    case .all:
-      output["reminders"] = try await service.pushReminders()
-      output["calendarEvents"] = try await service.pushEvents()
-      output["reminderLists"] = try await service.pushLists()
-    }
-    return output
+/// Pushes the requested entity types, returning results keyed by entity.
+func runPush(_ service: any SyncServiceProtocol, type: SyncEntityType) async throws -> [String: PushResult] {
+  var output: [String: PushResult] = [:]
+  switch type {
+  case .reminders:
+    output["reminders"] = try await service.pushReminders()
+  case .calendar:
+    output["calendarEvents"] = try await service.pushEvents()
+  case .lists:
+    output["reminderLists"] = try await service.pushLists()
+  case .all:
+    output["reminders"] = try await service.pushReminders()
+    output["calendarEvents"] = try await service.pushEvents()
+    output["reminderLists"] = try await service.pushLists()
   }
+  return output
+}
 
-  /// Pulls the requested entity types in dependency order, returning results keyed by entity.
-  func runPull(_ service: SyncService, type: SyncEntityType) async throws -> [String: PullSummary] {
-    var output: [String: PullSummary] = [:]
-    switch type {
-    case .reminders:
-      output["reminders"] = try await service.pullReminders()
-    case .calendar:
-      output["calendarEvents"] = try await service.pullEvents()
-    case .lists:
-      output["reminderLists"] = try await service.pullLists()
-    case .all:
-      for entity in SyncEntityType.fullPullOrder {
-        switch entity {
-        case .lists:
-          output["reminderLists"] = try await service.pullLists()
-        case .reminders:
-          output["reminders"] = try await service.pullReminders()
-        case .calendar:
-          output["calendarEvents"] = try await service.pullEvents()
-        case .all:
-          break
-        }
+/// Pulls the requested entity types in dependency order, returning results keyed by entity.
+func runPull(_ service: any SyncServiceProtocol, type: SyncEntityType) async throws -> [String: PullSummary] {
+  var output: [String: PullSummary] = [:]
+  switch type {
+  case .reminders:
+    output["reminders"] = try await service.pullReminders()
+  case .calendar:
+    output["calendarEvents"] = try await service.pullEvents()
+  case .lists:
+    output["reminderLists"] = try await service.pullLists()
+  case .all:
+    for entity in SyncEntityType.fullPullOrder {
+      switch entity {
+      case .lists:
+        output["reminderLists"] = try await service.pullLists()
+      case .reminders:
+        output["reminders"] = try await service.pullReminders()
+      case .calendar:
+        output["calendarEvents"] = try await service.pullEvents()
+      case .all:
+        break
       }
     }
-    return output
   }
-
-#endif
+  return output
+}
 
 // MARK: - Sync Output
 

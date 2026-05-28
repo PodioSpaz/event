@@ -56,17 +56,3 @@ public struct SyncStatusCommand: AsyncParsableCommand {
     print("  Reminder lists:  \(cursors.reminderLists ?? "never")")
   }
 }
-
-// MARK: - Pull Summary
-
-public struct PullSummary: Codable {
-  public let pulled: Int
-  public let deleted: Int
-  public let skipped: Int
-
-  public init(pulled: Int, deleted: Int, skipped: Int = 0) {
-    self.pulled = pulled
-    self.deleted = deleted
-    self.skipped = skipped
-  }
-}

@@ -8,7 +8,7 @@
 
   // MARK: - Sync Service
 
-  actor SyncService {
+  actor SyncService: SyncServiceProtocol {
     private let reminderService = ReminderService()
     private let calendarService = CalendarService()
     private let listService = ListService()

@@ -6,45 +6,47 @@ import Foundation
 
 /// Creates the appropriate backend services for the current platform.
 /// On macOS, returns EventKit-backed services for local Apple data.
-/// On Linux (or when EventKit is unavailable), returns Cloudflare D1-backed services.
+/// On Linux, returns SQLite-backed services for local storage with sync via D1.
 enum BackendFactory {
+  #if canImport(EventKit)
   static func makeRemindersBackend() async throws -> any RemindersBackend {
-    #if canImport(EventKit)
-      return ReminderService()
-    #else
-      let config = try CloudflareConfig.load()
-      let client = D1SyncClient(config: config.toSyncConfig())
-      let encryption = EncryptionService(key: try EncryptionService.keyFromEnvironment())
-      return CloudflareReminderService(client: client, encryption: encryption)
-    #endif
+    return ReminderService()
   }
 
   static func makeCalendarBackend() async throws -> any CalendarBackend {
-    #if canImport(EventKit)
-      return CalendarService()
-    #else
-      let config = try CloudflareConfig.load()
-      let client = D1SyncClient(config: config.toSyncConfig())
-      let encryption = EncryptionService(key: try EncryptionService.keyFromEnvironment())
-      return CloudflareCalendarService(client: client, encryption: encryption)
-    #endif
+    return CalendarService()
   }
 
   static func makeListsBackend() async throws -> any ListsBackend {
-    #if canImport(EventKit)
-      return ListService()
-    #else
-      let config = try CloudflareConfig.load()
-      let client = D1SyncClient(config: config.toSyncConfig())
-      return CloudflareListService(client: client)
-    #endif
+    return ListService()
   }
 
-  #if canImport(EventKit)
-    /// macOS-only: creates a SyncService for bidirectional push/pull.
-    static func makeSyncService() async throws -> SyncService {
-      let config = try SyncConfigStore.load()
-      return SyncService(config: config)
-    }
+  /// macOS-only: creates a SyncService for bidirectional push/pull.
+  static func makeSyncService() async throws -> any SyncServiceProtocol {
+    let config = try SyncConfigStore.load()
+    return SyncService(config: config)
+  }
+  #else
+  static func makeRemindersBackend() async throws -> any RemindersBackend {
+    let db = try SQLiteDatabase.open()
+    return SQLiteReminderService(connection: db.databaseConnection)
+  }
+
+  static func makeCalendarBackend() async throws -> any CalendarBackend {
+    let db = try SQLiteDatabase.open()
+    return SQLiteCalendarService(connection: db.databaseConnection)
+  }
+
+  static func makeListsBackend() async throws -> any ListsBackend {
+    let db = try SQLiteDatabase.open()
+    return SQLiteListService(connection: db.databaseConnection)
+  }
+
+  /// Linux: creates a LinuxSyncService for bidirectional push/pull between SQLite and D1.
+  static func makeSyncService() async throws -> any SyncServiceProtocol {
+    let config = try SyncConfigStore.load()
+    let db = try SQLiteDatabase.open()
+    return LinuxSyncService(config: config, database: db)
+  }
   #endif
 }

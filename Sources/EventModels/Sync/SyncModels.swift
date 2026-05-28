@@ -54,6 +54,18 @@ public struct PullItem<T: Codable & Sendable>: Sendable {
   }
 }
 
+public struct PullSummary: Codable, Sendable {
+  public let pulled: Int
+  public let deleted: Int
+  public let skipped: Int
+
+  public init(pulled: Int, deleted: Int, skipped: Int = 0) {
+    self.pulled = pulled
+    self.deleted = deleted
+    self.skipped = skipped
+  }
+}
+
 // MARK: - Sync ID Mapping
 
 public struct SyncIdMapping: Codable, Sendable {
