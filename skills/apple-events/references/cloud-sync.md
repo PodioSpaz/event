@@ -6,6 +6,12 @@ run `event sync`.
 
 The Worker source is bundled with this skill at `references/worker/`.
 
+The local side of the sync depends on the platform: macOS bridges EventKit and
+D1, while Linux (and other non-Apple platforms) bridges a local SQLite database
+at `~/.local/share/event-sync/local.db` and D1. On Linux, `event sync` is the
+first step on a fresh machine — it populates that local database before the
+`event reminders` / `calendar` / `lists` commands have anything to show.
+
 ## 1. Deploy the Worker (one-time)
 
 Run these from the bundled worker directory (`references/worker/`):
@@ -13,7 +19,7 @@ Run these from the bundled worker directory (`references/worker/`):
 ```bash
 pnpm install
 pnpm exec wrangler login
-cp wrangler.example.toml wrangler.toml    # copy the config template
+cp wrangler.toml.example wrangler.toml    # copy the config template
 pnpm exec wrangler d1 create event-sync   # copy the database_id into wrangler.toml
 pnpm run db:migrate:remote                # create the D1 tables
 openssl rand -hex 32 | pnpm exec wrangler secret put API_TOKEN   # auto-generate and set a strong shared token
@@ -42,7 +48,9 @@ event sync   # full bidirectional sync: pull, then push
 ```
 
 Run it on each device. The device id (hostname by default) keeps devices
-distinct, and a device never pulls back its own writes.
+distinct, and a device never pulls back its own writes. On Linux, run this first
+on a new machine to populate the local SQLite database before reading data with
+the other `event` commands.
 
 ## Notes
 
@@ -50,11 +58,12 @@ distinct, and a device never pulls back its own writes.
   events outside this window are not pushed or pulled, but are not deleted from
   the cloud while they still exist locally.
 - Conflicts resolve by last-write-wins: a pull never overwrites a local copy
-  modified more recently than the server's version. When EventKit provides no
-  modification or creation timestamp, the local copy is left unchanged until the
-  next push.
+  modified more recently than the server's version. When the local store
+  (EventKit on macOS, SQLite on Linux) provides no modification or creation
+  timestamp, the local copy is left unchanged until the next push.
 - Reminder lists carry no modification timestamp; concurrent renames resolve
   by last-write-wins on pull with no conflict warning.
-- Advanced reminder fields (`tags`, `flagged`, subtask relationships) are not
-  applied during sync pull; only basic EventKit fields are synced.
+- Advanced reminder fields (`tags`, `flagged`, subtask relationships) are
+  macOS/Shortcut-only and are not applied during sync pull; only basic fields
+  are synced.
 - A daily cron on the Worker purges records soft-deleted over 30 days ago.

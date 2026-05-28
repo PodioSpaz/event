@@ -1,6 +1,6 @@
 ---
 name: apple-events
-description: Use this skill whenever the user wants to manage their Apple Reminders or Calendars using the `event` CLI tool. It covers creating, viewing, searching, updating, and deleting reminders and calendar events, and syncing them to a Cloudflare backend.
+description: Use this skill whenever the user wants to manage their Apple Reminders or Calendars using the `event` CLI tool. It covers creating, viewing, searching, updating, and deleting reminders and calendar events, and syncing them to a Cloudflare backend. Works on macOS (via EventKit) and on Linux (via a local SQLite database synced from the Cloudflare backend).
 ---
 
 # Apple Reminders and Calendar CLI (`event`)
@@ -9,10 +9,13 @@ Use the `event` CLI to manage Apple Reminders and Calendars directly from the te
 
 ## Setup & Constraints
 
-- **macOS-only**.
-- Requires Reminders.app and Calendar.app to be accessible.
-- If prompted, the user must grant Full Access permissions in System Settings > Privacy & Security > Reminders / Calendars.
-- Some advanced reminder fields (`tags`, `flagged`, `url`, `parentTitle`) require the `AdvancedReminderEdit` Shortcut to be installed (https://www.icloud.com/shortcuts/b578334075754da9ba6e50b501515808). Without it — or with the global `--no-shortcuts` flag — the basic reminder is still created and those fields are skipped with a printed note.
+`event` runs on macOS and Linux, with platform-specific storage backends. All reminder/calendar/list commands below behave identically on both; only the underlying store differs.
+
+- **macOS** — reads and writes Apple Reminders and Calendar directly via EventKit.
+  - Requires Reminders.app and Calendar.app to be accessible.
+  - If prompted, the user must grant Full Access permissions in System Settings > Privacy & Security > Reminders / Calendars.
+  - Some advanced reminder fields (`tags`, `flagged`, `url`, `parentTitle`) require the `AdvancedReminderEdit` Shortcut to be installed (https://www.icloud.com/shortcuts/b578334075754da9ba6e50b501515808). Without it — or with the global `--no-shortcuts` flag — the basic reminder is still created and those fields are skipped with a printed note.
+- **Linux** (and other non-Apple platforms) — there is no EventKit, so `event` reads and writes a local SQLite database at `~/.local/share/event-sync/local.db`. Run `event sync` first to populate it from the Cloudflare D1 backend (see [Cloud Sync](#cloud-sync)), then use the same commands to manage that local data. Advanced fields and the `AdvancedReminderEdit` Shortcut are macOS-only.
 
 ## General Usage
 
@@ -74,6 +77,8 @@ Sync reminders, calendar events, and lists across devices through a Cloudflare D
 - Run a full bidirectional sync (pull, then push): `event sync`
 - Check configuration and sync state: `event sync status`
 - Advanced one-directional sync: `event sync push` / `event sync pull` (both accept `--type reminders|calendar|lists|all`)
+
+On macOS, sync bridges EventKit and D1. On Linux, sync bridges the local SQLite database and D1 — so on a fresh Linux machine, `event sync` (or `event sync pull`) is the first step before any data is available to the other commands.
 
 Sync requires a configured Cloudflare D1 backend: set the `EVENT_SYNC_API_URL` and `EVENT_SYNC_API_TOKEN` environment variables (the device id defaults to the hostname). For one-time Worker deployment and per-device environment setup, see [`references/cloud-sync.md`](references/cloud-sync.md); the Worker source is bundled with this skill at `references/worker/`.
 
