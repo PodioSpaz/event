@@ -55,8 +55,11 @@ actor SyncService {
       removeMapping: { $0.calendarEvents.removeValue(forKey: $1) },
       getEntityState: { $0.calendarEvents },
       setEntityState: { $0.calendarEvents = $1 },
-      deletionCandidates: {
-        $0.deletionCandidates(currentRemoteIds: $1, withinRange: fetchWindow)
+      deletionCandidates: { entityState, currentRemoteIds in
+        entityState.deletionCandidates(
+          currentRemoteIds: currentRemoteIds,
+          withinRange: fetchWindow
+        )
       },
       push: {
         try await self.syncClient.pushEvents(
@@ -65,6 +68,17 @@ actor SyncService {
       recordExtra: { entityState, event, remoteId in
         entityState.recordDateRange(
           SyncDateRange(start: event.startDate, end: event.endDate), for: remoteId)
+      },
+      filterDeletionCandidates: { candidates, idMapping in
+        var confirmed: [String] = []
+        for remoteId in candidates {
+          let localId = idMapping.calendarEvents[remoteId] ?? remoteId
+          if await self.calendarService.eventExists(id: localId) {
+            continue
+          }
+          confirmed.append(remoteId)
+        }
+        return confirmed
       },
       delete: { try await self.syncClient.deleteEvent(id: $0, lastModified: $1) }
     )
@@ -104,16 +118,22 @@ actor SyncService {
     deletionCandidates: (SyncEntityState, Set<String>) -> [String],
     push: ([E], [String: String], [String: String]) async throws -> PushResult,
     recordExtra: ((inout SyncEntityState, E, String) -> Void)? = nil,
+    filterDeletionCandidates: (([String], SyncIdMapping) async -> [String])? = nil,
     delete: (String, String?) async throws -> Void
   ) async throws -> PushResult {
-    var idMapping = SyncConfigStore.loadIdMapping()
-    var state = SyncConfigStore.loadState()
+    var idMapping = try SyncConfigStore.loadIdMapping()
+    var state = try SyncConfigStore.loadState()
     var entityState = getEntityState(state)
     let localToRemote = invertMapping(getMapping(idMapping))
-    // Only items with a known remote mapping count as current; unmapped local
-    // IDs must not be treated as remote IDs to avoid false deletions.
-    let currentRemoteIds = Set(items.compactMap { localToRemote[getId($0)] })
-    let deletedRemoteIds = deletionCandidates(entityState, currentRemoteIds)
+    let currentRemoteIds = SyncPushHelpers.currentRemoteIds(
+      items: items,
+      getId: getId,
+      localToRemote: localToRemote
+    )
+    var deletedRemoteIds = deletionCandidates(entityState, currentRemoteIds)
+    if let filterDeletionCandidates {
+      deletedRemoteIds = await filterDeletionCandidates(deletedRemoteIds, idMapping)
+    }
     let fallbackLastModified = ISO8601DateFormatter.eventISO8601.string(from: Date())
     let lastModifiedByRemoteId = try Dictionary(
       uniqueKeysWithValues: items.map { item in
@@ -144,10 +164,10 @@ actor SyncService {
       try await delete(remoteId, entityState.lastModifiedByRemoteId[remoteId])
       removeMapping(&idMapping, remoteId)
       entityState.removeRemoteId(remoteId)
+      setEntityState(&state, entityState)
+      try SyncConfigStore.saveIdMapping(idMapping)
+      try SyncConfigStore.saveState(state)
     }
-    setEntityState(&state, entityState)
-    try SyncConfigStore.saveIdMapping(idMapping)
-    try SyncConfigStore.saveState(state)
     return result
   }
 
@@ -156,11 +176,15 @@ actor SyncService {
   func pullReminders() async throws -> PullSummary {
     let localReminders = try await reminderService.fetchReminders(showCompleted: true)
     let localLastModified = lastModifiedIndex(
-      localReminders.map { (id: $0.id, lastModified: $0.lastModifiedDate) })
+      localReminders.map {
+        (id: $0.id, lastModified: $0.lastModifiedDate, creationDate: $0.creationDate)
+      })
+    let localIds = Set(localReminders.map(\.id))
 
     return try await pullEntities(
       entityName: "reminders",
       localLastModifiedById: localLastModified,
+      localIdsWithoutTimestamp: localIds.subtracting(Set(localLastModified.keys)),
       pull: { cursor in try await self.syncClient.pullReminders(cursor: cursor) },
       getCursor: { $0.reminders },
       setCursor: { $0.reminders = $1 },
@@ -225,11 +249,15 @@ actor SyncService {
       endDate: window.end
     )
     let localLastModified = lastModifiedIndex(
-      localEvents.map { (id: $0.id, lastModified: $0.lastModifiedDate) })
+      localEvents.map {
+        (id: $0.id, lastModified: $0.lastModifiedDate, creationDate: $0.creationDate)
+      })
+    let localIds = Set(localEvents.map(\.id))
 
     return try await pullEntities(
       entityName: "calendar events",
       localLastModifiedById: localLastModified,
+      localIdsWithoutTimestamp: localIds.subtracting(Set(localLastModified.keys)),
       pull: { cursor in try await self.syncClient.pullEvents(cursor: cursor) },
       getCursor: { $0.calendarEvents },
       setCursor: { $0.calendarEvents = $1 },
@@ -270,6 +298,12 @@ actor SyncService {
           )
           return created.id
         }
+      },
+      recordExtra: { entityState, item in
+        entityState.recordDateRange(
+          SyncDateRange(start: item.data.startDate, end: item.data.endDate),
+          for: item.id
+        )
       }
     )
   }
@@ -280,6 +314,7 @@ actor SyncService {
     try await pullEntities(
       entityName: "reminder lists",
       localLastModifiedById: [:],
+      localIdsWithoutTimestamp: [],
       pull: { cursor in try await self.syncClient.pullLists(cursor: cursor) },
       getCursor: { $0.reminderLists },
       setCursor: { $0.reminderLists = $1 },
@@ -313,6 +348,7 @@ actor SyncService {
   private func pullEntities<T: Codable & Sendable>(
     entityName: String,
     localLastModifiedById: [String: String],
+    localIdsWithoutTimestamp: Set<String>,
     pull: (String?) async throws -> PullResponse<T>,
     getCursor: (SyncCursors) -> String?,
     setCursor: (inout SyncCursors, String?) -> Void,
@@ -321,11 +357,12 @@ actor SyncService {
     getEntityState: (SyncState) -> SyncEntityState,
     setEntityState: (inout SyncState, SyncEntityState) -> Void,
     applyDelete: (String) async throws -> Void,
-    applyUpsert: (String, PullItem<T>) async throws -> String?
+    applyUpsert: (String, PullItem<T>) async throws -> String?,
+    recordExtra: ((inout SyncEntityState, PullItem<T>) -> Void)? = nil
   ) async throws -> PullSummary {
     var cursors = SyncConfigStore.loadCursors()
-    var idMapping = SyncConfigStore.loadIdMapping()
-    var state = SyncConfigStore.loadState()
+    var idMapping = try SyncConfigStore.loadIdMapping()
+    var state = try SyncConfigStore.loadState()
     var entityState = getEntityState(state)
     var pulled = 0
     var deleted = 0
@@ -373,6 +410,14 @@ actor SyncService {
 
         // Conflict guard: never overwrite a local copy that was modified more
         // recently than the server's version -- it is pushed on the next sync.
+        if localIdsWithoutTimestamp.contains(localId) {
+          fputs(
+            "Skipped \(entityName) \(item.id): local copy has no timestamp for conflict comparison\n",
+            stderr)
+          skipped += 1
+          continue
+        }
+
         if let localValue = localLastModifiedById[localId],
           let localModified = SyncTimestamp.parse(localValue),
           let serverModified = SyncTimestamp.parse(item.lastModified),
@@ -395,6 +440,7 @@ actor SyncService {
             remoteId: item.id,
             lastModified: item.lastModified
           )
+          recordExtra?(&entityState, item)
           pulled += 1
         } catch {
           fputs("Warning: Could not sync \(entityName) \(item.id): \(error)\n", stderr)
@@ -433,14 +479,17 @@ actor SyncService {
     return (DateFormatter.eventDate.string(from: start), DateFormatter.eventDate.string(from: end))
   }
 
-  /// Builds a `localId -> lastModified` index, dropping entries without a timestamp.
+  /// Builds a `localId -> lastModified` index, preferring modification time and
+  /// falling back to creation time when EventKit omits last-modified metadata.
   private nonisolated func lastModifiedIndex(
-    _ pairs: [(id: String, lastModified: String?)]
+    _ pairs: [(id: String, lastModified: String?, creationDate: String?)]
   ) -> [String: String] {
     var index: [String: String] = [:]
     for pair in pairs {
       if let lastModified = pair.lastModified {
         index[pair.id] = lastModified
+      } else if let creationDate = pair.creationDate {
+        index[pair.id] = creationDate
       }
     }
     return index

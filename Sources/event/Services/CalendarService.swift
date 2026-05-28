@@ -38,6 +38,11 @@ actor CalendarService {
     return ekEvents.map { CalendarEvent(from: $0) }
   }
 
+  /// Returns whether an event with the given EventKit identifier still exists locally.
+  func eventExists(id: String) async -> Bool {
+    eventStore.event(withIdentifier: id) != nil
+  }
+
   /// Create a calendar event
   func createEvent(
     title: String,

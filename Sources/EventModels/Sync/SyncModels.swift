@@ -165,7 +165,7 @@ public struct SyncEntityState: Codable, Sendable, Equatable {
     withinRange range: SyncDateRange
   ) -> [String] {
     knownRemoteIds.subtracting(currentRemoteIds).filter { id in
-      guard let stored = dateRangeByRemoteId[id] else { return true }
+      guard let stored = dateRangeByRemoteId[id] else { return false }
       return stored.overlaps(range)
     }.sorted()
   }

@@ -115,7 +115,17 @@ public enum SyncConfigStore {
         """
       )
     }
-    return try JSONDecoder().decode(SyncConfig.self, from: data)
+    let config = try JSONDecoder().decode(SyncConfig.self, from: data)
+    try validateAPIURL(config.apiURL)
+    return config
+  }
+
+  /// Loads config from a specific path. Used by tests and `load()`.
+  public static func loadConfig(from path: String) throws -> SyncConfig {
+    let data = try Data(contentsOf: URL(fileURLWithPath: path))
+    let config = try JSONDecoder().decode(SyncConfig.self, from: data)
+    try validateAPIURL(config.apiURL)
+    return config
   }
 
   public static func save(_ config: SyncConfig) throws {
@@ -135,8 +145,13 @@ public enum SyncConfigStore {
 
   // MARK: - ID Mapping
 
-  public static func loadIdMapping() -> SyncIdMapping {
-    loadJSON(from: idMappingPath, default: SyncIdMapping())
+  public static func loadIdMapping() throws -> SyncIdMapping {
+    try loadJSONStrict(from: idMappingPath, default: SyncIdMapping())
+  }
+
+  /// Loads ID mapping from a specific path. Used by tests.
+  public static func loadIdMapping(from path: String) throws -> SyncIdMapping {
+    try loadJSONStrict(from: path, default: SyncIdMapping())
   }
 
   public static func saveIdMapping(_ mapping: SyncIdMapping) throws {
@@ -145,8 +160,13 @@ public enum SyncConfigStore {
 
   // MARK: - State
 
-  public static func loadState() -> SyncState {
-    loadJSON(from: statePath, default: SyncState())
+  public static func loadState() throws -> SyncState {
+    try loadJSONStrict(from: statePath, default: SyncState())
+  }
+
+  /// Loads sync state from a specific path. Used by tests.
+  public static func loadState(from path: String) throws -> SyncState {
+    try loadJSONStrict(from: path, default: SyncState())
   }
 
   public static func saveState(_ state: SyncState) throws {
@@ -209,6 +229,27 @@ public enum SyncConfigStore {
     } catch {
       fputs("Warning: Could not parse \(path): \(error.localizedDescription)\n", stderr)
       return defaultValue
+    }
+  }
+
+  /// Returns the default when the file is missing; throws on parse errors.
+  private static func loadJSONStrict<T: Decodable>(
+    from path: String,
+    default defaultValue: T
+  ) throws -> T {
+    let data: Data
+    do {
+      data = try Data(contentsOf: URL(fileURLWithPath: path))
+    } catch {
+      return defaultValue
+    }
+    do {
+      return try JSONDecoder().decode(T.self, from: data)
+    } catch {
+      throw EventCLIError.unknown(
+        "Could not parse \(path): \(error.localizedDescription). "
+          + "Repair or remove the file before syncing again."
+      )
     }
   }
 }

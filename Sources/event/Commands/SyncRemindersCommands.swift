@@ -62,10 +62,12 @@ struct SyncRemindersCommands: AsyncParsableCommand {
     var json = false
 
     func run() async throws {
-      // Validate due date if provided
       if let due = due {
         _ = try Date.validated(dateTimeString: due)
       }
+
+      let lockFd = try SyncConfigStore.acquireLock()
+      defer { SyncConfigStore.releaseLock(lockFd) }
 
       let config = try SyncConfigStore.load()
       let client = D1SyncClient(config: config)
