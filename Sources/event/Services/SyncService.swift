@@ -145,21 +145,24 @@ actor SyncService {
       deletedRemoteIds = await filterDeletionCandidates(deletedRemoteIds, idMapping)
     }
     let fallbackLastModified = ISO8601DateFormatter.eventISO8601.string(from: Date())
-    let lastModifiedByRemoteId = try Dictionary(
-      uniqueItems.map { item in
-        let remoteId = localToRemote[getId(item)] ?? getId(item)
-        return (
-          remoteId,
-          try entityState.lastModified(
-            for: item, remoteId: remoteId, fallback: fallbackLastModified)
-        )
-      },
-      uniquingKeysWith: { first, _ in first }
-    )
-
-    let result = try await push(uniqueItems, localToRemote, lastModifiedByRemoteId)
-
+    var itemsToPush = [E]()
+    var lastModifiedByRemoteId = [String: String]()
+    
     for item in uniqueItems {
+      let remoteId = localToRemote[getId(item)] ?? getId(item)
+      let lastModified = try entityState.lastModified(
+        for: item, remoteId: remoteId, fallback: fallbackLastModified
+      )
+      
+      if lastModified == fallbackLastModified {
+        itemsToPush.append(item)
+        lastModifiedByRemoteId[remoteId] = lastModified
+      }
+    }
+
+    let result = try await push(itemsToPush, localToRemote, lastModifiedByRemoteId)
+
+    for item in itemsToPush {
       let remoteId = localToRemote[getId(item)] ?? getId(item)
       if let lastModified = lastModifiedByRemoteId[remoteId] {
         try entityState.recordSyncedValue(item, remoteId: remoteId, lastModified: lastModified)

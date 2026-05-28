@@ -227,9 +227,31 @@ public struct SyncState: Codable, Sendable, Equatable {
 }
 
 enum SyncSnapshotEncoder {
+  /// Fields excluded from snapshot comparison. These are either identity fields
+  /// (local vs remote IDs always differ) or timestamps managed by EventKit that
+  /// change on any local write -- including pull-triggered upserts -- so they
+  /// cannot be used to detect user-initiated content changes.
+  private static let volatileKeys: Set<String> = [
+    "id", "lastModifiedDate", "creationDate", "completionDate",
+  ]
+
   static func encode<T: Encodable>(_ value: T) throws -> String {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
-    return String(decoding: try encoder.encode(value), as: UTF8.self)
+    let raw = try encoder.encode(value)
+
+    // Strip volatile keys so pull-stored and push-computed snapshots compare
+    // only the user-visible content.
+    guard
+      var json = try JSONSerialization.jsonObject(with: raw) as? [String: Any]
+    else {
+      return String(decoding: raw, as: UTF8.self)
+    }
+    for key in volatileKeys {
+      json.removeValue(forKey: key)
+    }
+    let cleaned = try JSONSerialization.data(
+      withJSONObject: json, options: [.sortedKeys])
+    return String(decoding: cleaned, as: UTF8.self)
   }
 }
