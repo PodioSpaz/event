@@ -1,45 +1,45 @@
-import XCTest
+#if canImport(EventKit)
 import EventKit
+import EventModels
+import XCTest
+
 @testable import event
 
 final class ReminderListTests: XCTestCase {
 
-    func testReminderListInitialization() {
-        let store = EKEventStore()
-        let ekCalendar = EKCalendar(for: .reminder, eventStore: store)
-        ekCalendar.title = "My List"
+  private let store = EKEventStore()
 
-        let reminderList = ReminderList(from: ekCalendar)
+  func testReminderListInitialization() {
+    let ekCalendar = EKCalendar(for: .reminder, eventStore: store)
+    ekCalendar.title = "My List"
 
-        XCTAssertEqual(reminderList.title, "My List")
-        XCTAssertFalse(reminderList.id.isEmpty)
-    }
+    let reminderList = ReminderList(from: ekCalendar)
 
-    func testReminderListImmutable() {
-        let store = EKEventStore()
-        let ekCalendar = EKCalendar(for: .reminder, eventStore: store)
-        ekCalendar.title = "Immutable List"
+    XCTAssertEqual(reminderList.title, "My List")
+    XCTAssertFalse(reminderList.id.isEmpty)
+  }
 
-        let reminderList = ReminderList(from: ekCalendar)
+  func testReminderListImmutable() {
+    let ekCalendar = EKCalendar(for: .reminder, eventStore: store)
+    ekCalendar.title = "Immutable List"
 
-        XCTAssertEqual(reminderList.isImmutable, ekCalendar.isImmutable)
-    }
+    let reminderList = ReminderList(from: ekCalendar)
 
-    func testReminderListCodable() throws {
-        let store = EKEventStore()
-        let ekCalendar = EKCalendar(for: .reminder, eventStore: store)
-        ekCalendar.title = "Test List"
+    XCTAssertEqual(reminderList.isImmutable, ekCalendar.isImmutable)
+  }
 
-        let reminderList = ReminderList(from: ekCalendar)
+  func testReminderListCodable() throws {
+    let ekCalendar = EKCalendar(for: .reminder, eventStore: store)
+    ekCalendar.title = "Test List"
 
-        let encoder = JSONEncoder()
-        let data = try encoder.encode(reminderList)
+    let reminderList = ReminderList(from: ekCalendar)
 
-        let decoder = JSONDecoder()
-        let decoded = try decoder.decode(ReminderList.self, from: data)
+    let data = try JSONEncoder().encode(reminderList)
+    let decoded = try JSONDecoder().decode(ReminderList.self, from: data)
 
-        XCTAssertEqual(decoded.id, reminderList.id)
-        XCTAssertEqual(decoded.title, reminderList.title)
-        XCTAssertEqual(decoded.isImmutable, reminderList.isImmutable)
-    }
+    XCTAssertEqual(decoded.id, reminderList.id)
+    XCTAssertEqual(decoded.title, reminderList.title)
+    XCTAssertEqual(decoded.isImmutable, reminderList.isImmutable)
+  }
 }
+#endif

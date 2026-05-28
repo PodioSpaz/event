@@ -1,6 +1,8 @@
+#if canImport(EventKit)
 import ArgumentParser
 import CoreLocation
 import EventKit
+import EventModels
 import XCTest
 
 @testable import event
@@ -142,7 +144,9 @@ final class LocationTriggerTests: XCTestCase {
 
   func testLocationTriggerFromEKAlarmNilTitleDefaultsToLocation() {
     // Given an EKAlarm whose structured location has no title
-    let structuredLocation = EKStructuredLocation(title: nil)
+    // (EKStructuredLocation requires a title at init, but the property is nullable)
+    let structuredLocation = EKStructuredLocation(title: "")
+    structuredLocation.title = nil
     structuredLocation.geoLocation = CLLocation(latitude: 0, longitude: 0)
     structuredLocation.radius = 100
 
@@ -508,3 +512,4 @@ final class LocationTriggerTests: XCTestCase {
     XCTAssertEqual(roundTripped.proximity, .enter)
   }
 }
+#endif
