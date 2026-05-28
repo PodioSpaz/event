@@ -121,6 +121,47 @@ final class SyncConfigStoreTests: XCTestCase {
     XCTAssertEqual(decoded.apiToken, "secret-token")
   }
 
+  func testLoadIdMappingThrowsOnCorruptFile() throws {
+    let tmpDir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("SyncConfigStoreTests-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+    let path = tmpDir.appendingPathComponent("id-mapping.json").path
+    try "{ not json".write(toFile: path, atomically: true, encoding: .utf8)
+
+    XCTAssertThrowsError(try SyncConfigStore.loadIdMapping(from: path))
+  }
+
+  func testLoadStateThrowsOnCorruptFile() throws {
+    let tmpDir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("SyncConfigStoreTests-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+    let path = tmpDir.appendingPathComponent("state.json").path
+    try "{ not json".write(toFile: path, atomically: true, encoding: .utf8)
+
+    XCTAssertThrowsError(try SyncConfigStore.loadState(from: path))
+  }
+
+  func testLoadRejectsNonHTTPSConfigFile() throws {
+    let tmpDir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("SyncConfigStoreTests-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+    let path = tmpDir.appendingPathComponent("config.json").path
+    let config = SyncConfig(
+      apiURL: "http://example.workers.dev",
+      apiToken: "tok",
+      deviceId: "dev"
+    )
+    try SyncConfigStore.saveJSON(config, to: path)
+
+    XCTAssertThrowsError(try SyncConfigStore.loadConfig(from: path))
+  }
+
   func testSaveJSONLeavesNoTempFileBehind() throws {
     let tmpDir = FileManager.default.temporaryDirectory
       .appendingPathComponent("SyncConfigStoreTests-\(UUID().uuidString)")
