@@ -1,3 +1,4 @@
+#if canImport(EventKit)
 import EventModels
 import XCTest
 
@@ -47,3 +48,4 @@ final class CalendarDateInputResolverTests: XCTestCase {
     }
   }
 }
+#endif

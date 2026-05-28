@@ -1,3 +1,4 @@
+#if canImport(EventKit)
 import EventKit
 import EventModels
 import XCTest
@@ -35,3 +36,4 @@ final class ReminderTests: XCTestCase {
     XCTAssertNil(reminder.notes)
   }
 }
+#endif

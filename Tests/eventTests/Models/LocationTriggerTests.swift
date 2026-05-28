@@ -1,3 +1,4 @@
+#if canImport(EventKit)
 import ArgumentParser
 import CoreLocation
 import EventKit
@@ -511,3 +512,4 @@ final class LocationTriggerTests: XCTestCase {
     XCTAssertEqual(roundTripped.proximity, .enter)
   }
 }
+#endif

@@ -1,3 +1,4 @@
+#if canImport(EventKit)
 import EventModels
 import XCTest
 
@@ -36,3 +37,4 @@ final class ShortcutsServiceTests: XCTestCase {
     }
   }
 }
+#endif

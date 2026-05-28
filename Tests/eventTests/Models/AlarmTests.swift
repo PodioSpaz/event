@@ -1,3 +1,4 @@
+#if canImport(EventKit)
 import CoreLocation
 import EventKit
 import EventModels
@@ -69,3 +70,4 @@ final class AlarmTests: XCTestCase {
     XCTAssertEqual(decoded.alarmType, alarm.alarmType)
   }
 }
+#endif
