@@ -4,7 +4,7 @@ scopes:
     - name: mod
       description: Core data models, protocols, and utilities in Sources/EventModels/; does not cover sync service implementation
     - name: sync
-      description: Cloudflare sync service logic and D1 client in Sources/EventSync/; does not cover CLI commands or core models
+      description: Cloudflare and local database sync service logic in Sources/EventSync/; does not cover CLI commands or core models
     - name: tst
       description: Test suites for all application logic, models, and sync components in Tests/; does not cover production code
     - name: skl

@@ -29,24 +29,32 @@ type EntitySQL = {
   purgeDeleted: string;
 };
 
-// `?4` is the requesting device: `source_device IS NOT ?4` excludes a device's
-// own writes (NULL-safe), and `?4 = ''` disables the filter when no device is given.
+// The pull cursor is keyed on `seq`, a strictly increasing per-table integer the
+// Worker bumps on every applied write (see migration 0002). `?1` is the cursor
+// seq and `?2` its id tiebreaker. `?4` is the requesting device:
+// `source_device IS NOT ?4` excludes a device's own writes (NULL-safe), and
+// `?4 = ''` disables the filter when no device is given.
 function selectPageSQL(table: string): string {
   return (
-    `SELECT id, data, deleted, updated_at, last_modified FROM ${table} ` +
-    "WHERE (updated_at > ?1 OR (updated_at = ?1 AND id > ?2)) " +
+    `SELECT id, data, deleted, updated_at, last_modified, seq FROM ${table} ` +
+    "WHERE (seq > ?1 OR (seq = ?1 AND id > ?2)) " +
     "AND (?4 = '' OR source_device IS NOT ?4) " +
-    "ORDER BY updated_at ASC, id ASC LIMIT ?3"
+    "ORDER BY seq ASC, id ASC LIMIT ?3"
   );
 }
 
+// `seq = MAX(seq)+1` makes every applied write land past any cursor a device
+// already holds, so a completion (or any change) can never be stranded by a
+// cursor that sits above it. Evaluated before the row is written, so it sees the
+// current table max; on a conflicting update it still exceeds the row's own seq.
 function upsertSQL(table: string): string {
   return (
-    `INSERT INTO ${table} (id, data, last_modified, updated_at, source_device)
-      VALUES (?1, ?2, ?3, datetime('now'), ?4)
+    `INSERT INTO ${table} (id, data, last_modified, updated_at, source_device, seq)
+      VALUES (?1, ?2, ?3, datetime('now'), ?4, (SELECT IFNULL(MAX(seq), 0) + 1 FROM ${table}))
       ON CONFLICT(id) DO UPDATE SET
         data = excluded.data, last_modified = excluded.last_modified,
-        deleted = 0, updated_at = datetime('now'), source_device = excluded.source_device
+        deleted = 0, updated_at = datetime('now'), source_device = excluded.source_device,
+        seq = (SELECT IFNULL(MAX(seq), 0) + 1 FROM ${table})
       WHERE ${table}.last_modified <= excluded.last_modified`
   );
 }
@@ -55,7 +63,7 @@ function entitySQL(table: string): EntitySQL {
   return {
     upsert: upsertSQL(table),
     selectPage: selectPageSQL(table),
-    softDelete: `UPDATE ${table} SET deleted = 1, updated_at = datetime('now') WHERE id = ? AND last_modified <= ?`,
+    softDelete: `UPDATE ${table} SET deleted = 1, updated_at = datetime('now'), seq = (SELECT IFNULL(MAX(seq), 0) + 1 FROM ${table}) WHERE id = ? AND last_modified <= ?`,
     purgeDeleted: `DELETE FROM ${table} WHERE deleted = 1 AND updated_at < datetime('now', '-30 days')`,
   };
 }
@@ -164,7 +172,7 @@ app.post("/api/v1/:entity/push", async (c) => {
   return c.json({ synced, skipped: items.length - synced });
 });
 
-// Pull: incremental cursor-based fetch using composite (updated_at, id) cursor
+// Pull: incremental cursor-based fetch using composite (seq, id) cursor
 app.get("/api/v1/:entity/pull", async (c) => {
   const sql = getSQL(c.req.param("entity"));
   if (!sql) {
@@ -175,30 +183,40 @@ app.get("/api/v1/:entity/pull", async (c) => {
   const device = c.req.query("device") ?? "";
   const limit = 101; // fetch one extra to detect has_more
 
-  let cursorTime: string;
+  let cursorSeq: number;
   let cursorId: string;
 
-  if (rawCursor.includes("|")) {
+  if (rawCursor === "") {
+    cursorSeq = 0;
+    cursorId = "";
+  } else {
     const pipeIdx = rawCursor.indexOf("|");
-    cursorTime = rawCursor.slice(0, pipeIdx);
-    cursorId = rawCursor.slice(pipeIdx + 1);
-    if (!cursorTime) {
+    const seqPart = pipeIdx === -1 ? rawCursor : rawCursor.slice(0, pipeIdx);
+    const idPart = pipeIdx === -1 ? "" : rawCursor.slice(pipeIdx + 1);
+    if (pipeIdx !== -1 && seqPart === "") {
       return c.json({ error: "Invalid cursor" }, 400);
     }
-  } else {
-    // Sentinel matches the SQLite datetime('now') format ("YYYY-MM-DD HH:MM:SS").
-    cursorTime = rawCursor || "1970-01-01 00:00:00";
-    cursorId = "";
+    if (/^\d+$/.test(seqPart)) {
+      cursorSeq = Number(seqPart);
+      cursorId = idPart;
+    } else {
+      // A non-integer seq segment is a legacy `updated_at` timestamp cursor left
+      // over from before migration 0002. Restart from the beginning so the
+      // device re-pulls and re-converges instead of stranding forever.
+      cursorSeq = 0;
+      cursorId = "";
+    }
   }
 
   const { results } = await c.env.DB.prepare(sql.selectPage)
-    .bind(cursorTime, cursorId, limit, device)
+    .bind(cursorSeq, cursorId, limit, device)
     .all<{
       id: string;
       data: string;
       deleted: number;
       updated_at: string;
       last_modified: string;
+      seq: number;
     }>();
 
   const hasMore = results.length === limit;
@@ -222,7 +240,9 @@ app.get("/api/v1/:entity/pull", async (c) => {
   });
 
   const last = page[page.length - 1];
-  const newCursor = last ? `${last.updated_at}|${last.id}` : rawCursor;
+  // Always emit a normalized seq cursor so a legacy timestamp cursor is never
+  // echoed back and stored again.
+  const newCursor = last ? `${last.seq}|${last.id}` : `${cursorSeq}|${cursorId}`;
 
   return c.json({ items, cursor: newCursor, has_more: hasMore });
 });
