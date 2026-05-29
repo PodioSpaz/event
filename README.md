@@ -123,6 +123,13 @@ openssl rand -hex 32 | pnpm exec wrangler secret put API_TOKEN   # auto-generate
 pnpm run deploy                           # prints https://<worker>.workers.dev
 ```
 
+> **Upgrading an existing deployment:** the pull cursor is keyed on a monotonic
+> `seq` column added by migration `0002_seq_cursor`. Re-run
+> `pnpm run db:migrate:remote` and then `pnpm run deploy` after pulling these
+> changes. Devices stored with an older timestamp cursor self-heal on their next
+> pull (they restart from the beginning once and re-converge), so no client
+> action is needed.
+
 #### 2. Configure each device
 
 Set two environment variables — add them to `~/.zshrc` (or `~/.bashrc`) so they
