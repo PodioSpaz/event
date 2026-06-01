@@ -198,8 +198,8 @@ struct ReminderCommands: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "New title")
     var title: String?
 
-    @Flag(name: .shortAndLong, help: "Mark as completed")
-    var completed = false
+    @Option(name: .shortAndLong, help: "Mark as completed (true/false)")
+    var completed: Bool?
 
     @Option(name: .shortAndLong, help: "New priority (0-9)")
     var priority: Int?
@@ -264,7 +264,7 @@ struct ReminderCommands: AsyncParsableCommand {
         let reminder = try await service.updateReminder(
           id: id,
           title: title,
-          completed: completed ? true : nil,
+          completed: completed,
           notes: notes,
           dueDate: due,
           clearDue: clearDue,
@@ -283,7 +283,7 @@ struct ReminderCommands: AsyncParsableCommand {
         let backend = try await BackendFactory.makeRemindersBackend()
         let params = UpdateReminderParams(
           title: title,
-          completed: completed ? true : nil,
+          completed: completed,
           notes: notes,
           dueDate: due,
           clearDue: clearDue,
