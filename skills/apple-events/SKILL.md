@@ -35,6 +35,7 @@ All commands support the `--json` flag to output results in JSON format, which i
 - With multiline notes: `event reminders create --title "Shopping list" --notes $'Milk\nBread\nEggs'` (use `$'...'` with `\n` for newlines in bash/zsh)
 - Advanced fields (require Shortcut): `event reminders create --title "Urgent bug" --tags "bug,urgent" --flagged true --url "https://github.com/issues/1"`
 - Location trigger: `event reminders create --title "Pick up keys" --location "Home" --latitude 37.3349 --longitude -122.0090 --proximity enter` (`--radius` defaults to 100 meters; `--proximity` is `enter` or `leave`)
+- With a URL: `event reminders create --title "Fix login bug" --url "https://example.com/issues/42"`. When a task is associated with an external link, always pass it via `--url` — never put URLs in `--notes` as a substitute. If the Shortcut isn't installed, `--url` is skipped gracefully with a printed note.
 
 ### Update Reminders
 - Mark as completed: `event reminders update --id <UUID> --completed`
