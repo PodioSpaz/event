@@ -32,6 +32,7 @@ All commands support the `--json` flag to output results in JSON format, which i
 ### Create Reminders
 - Basic: `event reminders create --title "Buy groceries"`
 - With details: `event reminders create --title "Project meeting" --list "Work" --due "2026-03-10 14:00:00" --priority 1 --notes "Discuss Q3 goals"`
+- With multiline notes: `event reminders create --title "Shopping list" --notes $'Milk\nBread\nEggs'` (use `$'...'` with `\n` for newlines in bash/zsh)
 - Advanced fields (require Shortcut): `event reminders create --title "Urgent bug" --tags "bug,urgent" --flagged true --url "https://github.com/issues/1"`
 - Location trigger: `event reminders create --title "Pick up keys" --location "Home" --latitude 37.3349 --longitude -122.0090 --proximity enter` (`--radius` defaults to 100 meters; `--proximity` is `enter` or `leave`)
 
@@ -64,6 +65,7 @@ All commands support the `--json` flag to output results in JSON format, which i
 
 ### Create Events
 - Timed event: `event calendar create --title "Standup" --start "2026-03-10 09:00:00" --end "2026-03-10 09:30:00" --calendar "Work" --location "Office" --notes "Daily sync"`
+- With multiline notes: `event calendar create --title "Conference" --start "2026-03-10 09:00:00" --end "2026-03-10 17:00:00" --notes $'Agenda:\nKeynote\nWorkshop\nBreakout sessions'`
 - All-day event: use `yyyy-MM-dd` for `--start` / `--end`.
 
 ### Update & Delete Events
@@ -87,6 +89,7 @@ Sync requires a configured Cloudflare D1 backend: set the `EVENT_SYNC_API_URL` a
 - **Dates**: timed values use `yyyy-MM-dd HH:mm:ss` (e.g. "2026-03-10 14:00:00"); all-day calendar events use `yyyy-MM-dd`.
 - **Priority**: 1 = High, 5 = Medium, 9 = Low, 0 = None.
 - **Advanced fields**: `tags`, `flagged`, `url`, and subtask relationships (`parentTitle`) are handled via the `AdvancedReminderEdit` Shortcut. Without it (or with `--no-shortcuts`) they are skipped. The reminder `notes` field holds plain user notes only — no metadata block.
+- **Notes formatting**: newlines in `--notes` are preserved as plain text line breaks; markdown syntax (bold, italic, lists, etc.) is not interpreted and will appear literally.
 - **Calendar sync window**: only events from one year in the past to two years ahead are pushed and pulled. Events moved outside this window remain in the cloud until explicitly deleted locally.
 - **Sync conflicts**: timed entities use last-write-wins using modification timestamps (falling back to creation time). Local copies without any timestamp are not overwritten on pull.
 - **Reminder lists**: no per-list modification timestamp — concurrent renames last-write-wins on pull.
