@@ -10,40 +10,115 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-latest
+    name: Build (${{ matrix.platform }}-${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+          - os: macos-13
+            platform: darwin
+            arch: amd64
+          - os: ubuntu-24.04
+            platform: linux
+            arch: amd64
+          - os: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Build release
+      - name: Build (macOS)
+        if: matrix.platform == 'darwin'
+        run: swift build -c release
+
+      - name: Build (Linux)
+        if: matrix.platform == 'linux'
         run: |
-          swift build -c release
+          docker run --rm \
+            -v "$PWD":/app \
+            -w /app \
+            swift:5.9-jammy \
+            bash -c "swift build -c release --static-swift-stdlib"
 
       - name: Create archive
         run: |
-          cp .build/release/event ./
-          zip -r event-macos.zip event
+          cp .build/release/event ./event
+          tar -czf event-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz event
+          rm event
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
-          files: event-macos.zip
+          files: event-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
           generate_release_notes: true
-          body: |
-            ## Installation
 
-            ### Homebrew
-            ```bash
-            brew tap FradSer/brew
-            brew install event
-            ```
+  update-homebrew:
+    name: Update Homebrew formula
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update formula
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION=${TAG#v}
+          declare -A SHAS
+          gh release download "${TAG}" --repo ${{ github.repository }} --pattern "*.tar.gz"
+          for platform in darwin-amd64 darwin-arm64 linux-amd64 linux-arm64; do
+            SHAS[$platform]=$(sha256sum "event-${platform}.tar.gz" | cut -d' ' -f1)
+          done
 
-            ### Direct Download
-            - `event-macos.zip` - Precompiled binary for macOS
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/FradSer/brew.git" tap
+          cd tap
 
-            ### Build from Source
-            ```bash
-            swift build -c release
-            ```
+          cat > Formula/event.rb << FORMULA
+          class Event < Formula
+            desc "Pure Swift CLI for managing Apple Reminders and Calendar"
+            homepage "https://github.com/FradSer/event"
+            version "${VERSION}"
+            license "MIT"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/FradSer/event/releases/download/${TAG}/event-darwin-arm64.tar.gz"
+                sha256 "${SHAS[darwin-arm64]}"
+              else
+                url "https://github.com/FradSer/event/releases/download/${TAG}/event-darwin-amd64.tar.gz"
+                sha256 "${SHAS[darwin-amd64]}"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.arm?
+                url "https://github.com/FradSer/event/releases/download/${TAG}/event-linux-arm64.tar.gz"
+                sha256 "${SHAS[linux-arm64]}"
+              else
+                url "https://github.com/FradSer/event/releases/download/${TAG}/event-linux-amd64.tar.gz"
+                sha256 "${SHAS[linux-amd64]}"
+              end
+            end
+
+            def install
+              bin.install "event"
+            end
+
+            test do
+              system "#{bin}/event", "--help"
+            end
+          end
+          FORMULA
+
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add Formula/event.rb
+          git commit -m "chore: update event to ${VERSION}"
+          git push
