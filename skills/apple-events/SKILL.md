@@ -1,11 +1,31 @@
 ---
 name: apple-events
 description: Use this skill whenever the user wants to manage their Apple Reminders or Calendars using the `event` CLI tool. It covers creating, viewing, searching, updating, and deleting reminders and calendar events, and syncing them to a Cloudflare backend. Works on macOS (via EventKit) and on Linux (via a local SQLite database synced from the Cloudflare backend).
+argument-hint: "[what to create or look up — empty to capture from context]"
 ---
 
 # Apple Reminders and Calendar CLI (`event`)
 
 Use the `event` CLI to manage Apple Reminders and Calendars directly from the terminal. You can create, view, search, update, and delete reminders and calendar events, and sync data across devices.
+
+## Invocation & Arguments
+
+Treat `$ARGUMENTS` as a free-form natural-language instruction and map it to the appropriate `event` command(s) documented below. Resolve relative dates and times ("tomorrow", "next Monday", "in 2 hours", "this Friday afternoon") against the current date/time before building the command. Examples:
+
+- `/apple-events remind me to call the dentist tomorrow at 3pm` -> `event reminders create ...`
+- `/apple-events what's on my calendar this week?` -> `event calendar list ...`
+- `/apple-events block 2-4pm Friday for deep work` -> `event calendar create ...`
+
+### When no arguments are given
+
+If `$ARGUMENTS` is empty, do **not** default to listing. Instead, infer intent from the current conversation:
+
+1. **Scan the recent conversation** for an actionable item the user might want captured — a commitment, deadline, follow-up, meeting, appointment, or TODO.
+2. **Classify it:**
+   - A **task** (something to do, optionally with a due date) -> a reminder (`event reminders create`).
+   - A **scheduled event** (something happening at a specific time, with a start/end) -> a calendar event (`event calendar create`).
+3. **Confirm with the `AskUserQuestion` tool before creating anything.** Present the inferred type and details (title, date/time, target list/calendar) so the user can confirm, switch task<->event, adjust fields, or decline. Never create in the no-args path without explicit confirmation.
+4. If **nothing actionable** is found in the conversation, use `AskUserQuestion` to ask what the user would like to create (task or event) rather than guessing.
 
 ## Setup & Constraints
 
@@ -38,7 +58,7 @@ All commands support the `--json` flag to output results in JSON format, which i
 - With a URL: `event reminders create --title "Fix login bug" --url "https://example.com/issues/42"`. When a task is associated with an external link, always pass it via `--url` — never put URLs in `--notes` as a substitute. If the Shortcut isn't installed, `--url` is skipped gracefully with a printed note.
 
 ### Update Reminders
-- Mark as completed: `event reminders update --id <UUID> --completed`
+- Mark as completed: `event reminders update --id <UUID> --completed true` (or `--completed false` to uncheck)
 - Change title and priority: `event reminders update --id <UUID> --title "New Title" --priority 5`
 - Add/remove flag (requires Shortcut): `event reminders update --id <UUID> --flagged true` or `--flagged false`
 - Clear a date: `event reminders update --id <UUID> --clear-due` (or `--clear-start`)
@@ -60,7 +80,7 @@ All commands support the `--json` flag to output results in JSON format, which i
 ## Calendar Management
 
 ### List Events
-- List upcoming events (default 7 days): `event calendar list`
+- List upcoming events (default 1 month from today): `event calendar list`
 - List for a date range: `event calendar list --start "2026-03-01" --end "2026-03-31"`
 - Filter by calendar: `event calendar list --calendar "Work"`
 
