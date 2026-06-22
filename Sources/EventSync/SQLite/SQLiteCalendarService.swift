@@ -1,3 +1,4 @@
+import AppleSyncKit
 import EventModels
 import Foundation
 import SQLite
@@ -50,7 +51,7 @@ public actor SQLiteCalendarService: CalendarBackend {
   // MARK: - Create
 
   public func createEvent(_ params: CreateEventParams) async throws -> CalendarEvent {
-    let now = ISO8601DateFormatter.eventISO8601.string(from: Date())
+    let now = ISO8601DateFormatter.syncISO8601.string(from: Date())
     let id = UUID().uuidString
 
     let calendarName = params.calendarName ?? "Calendar"
@@ -94,7 +95,7 @@ public actor SQLiteCalendarService: CalendarBackend {
     params: UpdateEventParams
   ) async throws -> CalendarEvent {
     let existing = try await fetchEvent(byId: id)
-    let now = ISO8601DateFormatter.eventISO8601.string(from: Date())
+    let now = ISO8601DateFormatter.syncISO8601.string(from: Date())
 
     let updatedEvent = CalendarEvent(
       id: existing.id,
@@ -133,7 +134,7 @@ public actor SQLiteCalendarService: CalendarBackend {
   // MARK: - Delete
 
   public func deleteEvent(id: String) async throws {
-    let now = ISO8601DateFormatter.eventISO8601.string(from: Date())
+    let now = ISO8601DateFormatter.syncISO8601.string(from: Date())
     try connection.run(
       """
       UPDATE calendar_events

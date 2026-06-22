@@ -1,15 +1,19 @@
+import AppleSyncKit
 import EventModels
 import Foundation
 
 // MARK: - Cloudflare Calendar Service
 
+/// Reads and writes calendar events directly against Cloudflare D1, transparently
+/// decrypting sensitive fields on read and encrypting on write via
+/// `EventEncryptor`. Used by the advanced `event sync calendar` subcommands.
 public actor CloudflareCalendarService: CalendarBackend {
-  private let client: D1Client
-  private let encryption: EncryptionService
+  private let client: D1SyncClient
+  private let encryptor: EventEncryptor
 
-  public init(client: D1Client, encryption: EncryptionService) {
+  public init(client: D1SyncClient, encryptor: EventEncryptor) {
     self.client = client
-    self.encryption = encryption
+    self.encryptor = encryptor
   }
 
   // MARK: - Fetch
@@ -19,7 +23,7 @@ public actor CloudflareCalendarService: CalendarBackend {
     end: String,
     calendarName: String?
   ) async throws -> [CalendarEvent] {
-    let all = try await client.pullAllEvents()
+    let all: [CalendarEvent] = try await client.pullAll(entity: "calendar_events")
     var filtered = all
 
     if let calendarName {
@@ -30,22 +34,21 @@ public actor CloudflareCalendarService: CalendarBackend {
       eventOverlapsRange(event: event, rangeStart: start, rangeEnd: end)
     }
 
-    return try await decryptEvents(filtered)
+    return try await encryptor.decryptEvents(filtered)
   }
 
   public func fetchEvent(byId id: String) async throws -> CalendarEvent {
-    let all = try await client.pullAllEvents()
+    let all: [CalendarEvent] = try await client.pullAll(entity: "calendar_events")
     guard let event = all.first(where: { $0.id == id }) else {
       throw EventCLIError.notFound("Calendar event with ID '\(id)' not found")
     }
-    let decrypted = try await decryptEvents([event])
-    return decrypted[0]
+    return try await encryptor.decryptEvents([event])[0]
   }
 
   // MARK: - Create
 
   public func createEvent(_ params: CreateEventParams) async throws -> CalendarEvent {
-    let now = ISO8601DateFormatter.eventISO8601.string(from: Date())
+    let now = ISO8601DateFormatter.syncISO8601.string(from: Date())
     let id = UUID().uuidString
 
     let calendarName = params.calendarName ?? "Calendar"
@@ -69,8 +72,8 @@ public actor CloudflareCalendarService: CalendarBackend {
       attendees: nil
     )
 
-    let d1Event = try await encryptEvent(plainEvent)
-    _ = try await client.pushEvents([d1Event], idOverrides: [:], lastModifiedByRemoteId: [:])
+    let d1Events = try await encryptor.encryptEvents([plainEvent])
+    _ = try await client.push(entity: "calendar_events", items: d1Events, id: { $0.id })
     return plainEvent
   }
 
@@ -80,14 +83,13 @@ public actor CloudflareCalendarService: CalendarBackend {
     id: String,
     params: UpdateEventParams
   ) async throws -> CalendarEvent {
-    let all = try await client.pullAllEvents()
+    let all: [CalendarEvent] = try await client.pullAll(entity: "calendar_events")
     guard let encrypted = all.first(where: { $0.id == id }) else {
       throw EventCLIError.notFound("Calendar event with ID '\(id)' not found")
     }
 
-    let decrypted = try await decryptEvents([encrypted])
-    let existing = decrypted[0]
-    let now = ISO8601DateFormatter.eventISO8601.string(from: Date())
+    let existing = try await encryptor.decryptEvents([encrypted])[0]
+    let now = ISO8601DateFormatter.syncISO8601.string(from: Date())
 
     let updatedPlain = CalendarEvent(
       id: existing.id,
@@ -109,18 +111,17 @@ public actor CloudflareCalendarService: CalendarBackend {
       attendees: existing.attendees
     )
 
-    let d1Event = try await encryptEvent(updatedPlain)
-    _ = try await client.pushEvents([d1Event], idOverrides: [:], lastModifiedByRemoteId: [:])
+    let d1Events = try await encryptor.encryptEvents([updatedPlain])
+    _ = try await client.push(entity: "calendar_events", items: d1Events, id: { $0.id })
     return updatedPlain
   }
 
   // MARK: - Delete
 
   public func deleteEvent(id: String) async throws {
-    try await client.deleteEvent(
-      id: id,
-      lastModified: ISO8601DateFormatter.eventISO8601.string(from: Date())
-    )
+    try await client.delete(
+      entity: "calendar_events", id: id,
+      lastModified: ISO8601DateFormatter.syncISO8601.string(from: Date()))
   }
 
   // MARK: - Date Range Filtering
@@ -131,107 +132,5 @@ public actor CloudflareCalendarService: CalendarBackend {
     rangeEnd: String
   ) -> Bool {
     event.startDate <= rangeEnd && event.endDate >= rangeStart
-  }
-
-  // MARK: - Encryption Helpers
-
-  private func encryptEvent(_ event: CalendarEvent) async throws -> CalendarEvent {
-    let attendeeStrings = event.attendees?.map { $0.url }
-
-    let payload = EncryptedPayload(
-      notes: event.notes,
-      url: event.url,
-      location: event.location,
-      alarms: event.alarms,
-      recurrenceRules: event.recurrenceRules,
-      attendees: attendeeStrings
-    )
-
-    guard !payload.isEmpty else { return event }
-
-    let aadDate = Self.aadDate(for: event)
-    let encrypted = try await encryption.encrypt(
-      payload, recordId: event.id, modifiedDate: aadDate
-    )
-
-    let carrier = EncryptedCarrier(p: encrypted.encryptedPayload, i: encrypted.encryptedIV)
-    let carrierJSON = try carrier.toJSONString()
-
-    return CalendarEvent(
-      id: event.id,
-      title: event.title,
-      calendar: event.calendar,
-      startDate: event.startDate,
-      endDate: event.endDate,
-      isAllDay: event.isAllDay,
-      location: nil,
-      notes: carrierJSON,
-      url: nil,
-      timeZone: event.timeZone,
-      creationDate: event.creationDate,
-      lastModifiedDate: event.lastModifiedDate,
-      status: event.status,
-      availability: event.availability,
-      alarms: nil,
-      recurrenceRules: nil,
-      attendees: nil
-    )
-  }
-
-  private func decryptEvents(_ events: [CalendarEvent]) async throws -> [CalendarEvent] {
-    var result: [CalendarEvent] = []
-    result.reserveCapacity(events.count)
-    for event in events {
-      result.append(try await decryptEvent(event))
-    }
-    return result
-  }
-
-  private func decryptEvent(_ event: CalendarEvent) async throws -> CalendarEvent {
-    guard let notes = event.notes,
-      let carrier = EncryptedCarrier.fromJSON(notes)
-    else {
-      return event
-    }
-
-    let aadDate = Self.aadDate(for: event)
-    let payload = try await encryption.decrypt(
-      carrier.p,
-      iv: carrier.i,
-      recordId: event.id,
-      modifiedDate: aadDate
-    )
-
-    let attendees: [Participant]? = payload.attendees.map { urls in
-      urls.map {
-        Participant(
-          name: nil, url: $0, status: nil, role: nil, type: nil, isCurrentUser: nil
-        )
-      }
-    }
-
-    return CalendarEvent(
-      id: event.id,
-      title: event.title,
-      calendar: event.calendar,
-      startDate: event.startDate,
-      endDate: event.endDate,
-      isAllDay: event.isAllDay,
-      location: payload.location ?? event.location,
-      notes: payload.notes,
-      url: payload.url ?? event.url,
-      timeZone: event.timeZone,
-      creationDate: event.creationDate,
-      lastModifiedDate: event.lastModifiedDate,
-      status: event.status,
-      availability: event.availability,
-      alarms: payload.alarms ?? event.alarms,
-      recurrenceRules: payload.recurrenceRules ?? event.recurrenceRules,
-      attendees: attendees ?? event.attendees
-    )
-  }
-
-  private static func aadDate(for event: CalendarEvent) -> String {
-    event.lastModifiedDate ?? event.creationDate ?? ""
   }
 }
