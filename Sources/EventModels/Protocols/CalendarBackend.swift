@@ -3,7 +3,8 @@ import Foundation
 // MARK: - Calendar Backend Protocol
 
 public protocol CalendarBackend: Sendable {
-  func fetchEvents(start: String, end: String, calendarName: String?) async throws -> [CalendarEvent]
+  func fetchEvents(start: String, end: String, calendarName: String?) async throws
+    -> [CalendarEvent]
   func fetchEvent(byId id: String) async throws -> CalendarEvent
   func createEvent(_ params: CreateEventParams) async throws -> CalendarEvent
   func updateEvent(id: String, params: UpdateEventParams) async throws -> CalendarEvent
