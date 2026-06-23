@@ -111,18 +111,20 @@ event reminders lists create --name "工作"
 
 #### 1. 部署 Worker（一次性）
 
+Worker 源码是 canonical [apple-sync-kit/worker](https://github.com/FradSer/apple-sync-kit/tree/main/worker)
+的快照，已为 event 预配置（`ENTITIES="reminders,calendar_events,reminder_lists"`）。
+
 ```bash
 cd skills/apple-events/references/worker
 pnpm install
 pnpm exec wrangler login
-cp wrangler.toml.example wrangler.toml    # 复制配置文件模板
 pnpm exec wrangler d1 create event-sync   # 把输出的 database_id 填入 wrangler.toml
 pnpm run db:migrate:remote                # 创建 D1 数据表
 openssl rand -hex 32 | pnpm exec wrangler secret put API_TOKEN   # 自动生成并设置一个强随机 token
 pnpm run deploy                           # 输出 https://<worker>.workers.dev
 ```
 
-> **升级已有部署：** 拉取游标现在使用迁移 `0002_seq_cursor` 新增的单调递增
+> **升级已有部署：** 拉取游标现在使用迁移 `0002_events_seq_cursor` 新增的单调递增
 > `seq` 列。拉取本次改动后，请重新运行 `pnpm run db:migrate:remote`，再运行
 > `pnpm run deploy`。仍持有旧时间戳游标的设备会在下次拉取时自愈（从头重拉一次
 > 并重新对齐），客户端无需任何操作。
@@ -174,6 +176,13 @@ event sync pull --type calendar # 仅拉取，且只同步一种类型
    ```bash
    npx skills add https://github.com/FradSer/event --skill apple-events
    ```
+
+## 相关项目
+
+- [apple-sync-kit](https://github.com/FradSer/apple-sync-kit) — 共享的同步库和
+  canonical D1 Worker（`worker/`），驱动 `event sync`
+- [note](https://github.com/FradSer/note) — Apple Notes 的配套 CLI；
+  同样的架构，独立的后端
 
 ## 许可证
 

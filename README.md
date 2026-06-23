@@ -112,11 +112,14 @@ through a Cloudflare Worker backed by D1.
 
 #### 1. Deploy the Worker (one-time)
 
+The Worker source is a snapshot of the canonical
+[apple-sync-kit/worker](https://github.com/FradSer/apple-sync-kit/tree/main/worker),
+pre-configured for event (`ENTITIES="reminders,calendar_events,reminder_lists"`).
+
 ```bash
 cd skills/apple-events/references/worker
 pnpm install
 pnpm exec wrangler login
-cp wrangler.toml.example wrangler.toml    # copy the config template
 pnpm exec wrangler d1 create event-sync   # copy the database_id into wrangler.toml
 pnpm run db:migrate:remote                # create the D1 tables
 openssl rand -hex 32 | pnpm exec wrangler secret put API_TOKEN   # auto-generate and set a strong shared token
@@ -124,7 +127,7 @@ pnpm run deploy                           # prints https://<worker>.workers.dev
 ```
 
 > **Upgrading an existing deployment:** the pull cursor is keyed on a monotonic
-> `seq` column added by migration `0002_seq_cursor`. Re-run
+> `seq` column added by migration `0002_events_seq_cursor`. Re-run
 > `pnpm run db:migrate:remote` and then `pnpm run deploy` after pulling these
 > changes. Devices stored with an older timestamp cursor self-heal on their next
 > pull (they restart from the beginning once and re-converge), so no client
@@ -185,6 +188,13 @@ The [`apple-events`](skills/apple-events/) skill lets AI agents manage your Appl
    ```bash
    npx skills add https://github.com/FradSer/event --skill apple-events
    ```
+
+## Related Projects
+
+- [apple-sync-kit](https://github.com/FradSer/apple-sync-kit) — shared sync
+  library and canonical D1 Worker (`worker/`) that powers `event sync`
+- [note](https://github.com/FradSer/note) — companion CLI for Apple Notes;
+  same architecture, separate backend
 
 ## License
 
