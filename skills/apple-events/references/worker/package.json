@@ -1,5 +1,5 @@
 {
-  "name": "event-sync-worker",
+  "name": "apple-sync-worker",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -8,8 +8,8 @@
     "deploy": "wrangler deploy",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p test/tsconfig.json --noEmit",
-    "db:migrate": "wrangler d1 migrations apply event-sync --local",
-    "db:migrate:remote": "wrangler d1 migrations apply event-sync --remote"
+    "db:migrate": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote"
   },
   "dependencies": {
     "hono": "^4.12.26"
