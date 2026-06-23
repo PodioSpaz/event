@@ -1,24 +1,24 @@
-name = "apple-sync-api"                 # your deployment name
+name = "event-sync-api"                 # your deployment name
 main = "src/index.ts"
 compatibility_date = "2026-03-01"
 
 # The set of tables this deployment serves. Pick one:
-#   notes only            -> "notes,note_folders"
 #   events only           -> "reminders,calendar_events,reminder_lists"
+#   notes only            -> "notes,note_folders"
 #   both (single D1)      -> "notes,note_folders,reminders,calendar_events,reminder_lists"
 [vars]
-ENTITIES = "notes,note_folders"
+ENTITIES = "reminders,calendar_events,reminder_lists"
 
 # The Worker is shared across all deployments; only this database binding and
 # the migrations_dir differ per consumer. Point migrations_dir at the set(s)
-# you configured above. For "both", apply the notes migrations first (set
-# migrations_dir = "migrations/notes", run db:migrate:notes), then switch to
-# "migrations/events" and run db:migrate:events.
+# you configured above. For "both", apply the events migrations first (set
+# migrations_dir = "migrations/events", run db:migrate), then switch to
+# "migrations/notes" and run db:migrate again.
 [[d1_databases]]
 binding = "DB"
-database_name = "apple-sync"             # your D1 database name
+database_name = "event-sync"             # your D1 database name
 database_id = "REPLACE_WITH_YOUR_DATABASE_ID"
-migrations_dir = "migrations/notes"
+migrations_dir = "migrations/events"
 
 # Daily purge of soft-deleted records older than 30 days.
 [triggers]
