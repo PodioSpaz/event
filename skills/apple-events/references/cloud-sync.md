@@ -4,14 +4,13 @@
 a Cloudflare Worker backed by D1. This is a one-time setup; afterward you just
 run `event sync`.
 
-The Worker source is a snapshot of the canonical Worker in the `apple-sync-kit`
-repo, synced into this skill at `references/worker/`. The same canonical Worker
-also backs the `note` CLI — only the `ENTITIES` var and migration set differ.
-This snapshot is pre-configured for `event`
-(`ENTITIES="reminders,calendar_events,reminder_lists"`,
-`migrations_dir="migrations/events"`); an `event`-only user never needs the
-`note` side. To refresh the snapshot after a canonical update, run
-`./references/worker/sync-from-kit.sh`.
+The Worker is the canonical one in the `apple-sync-kit` repo; the same Worker
+also backs the `note` CLI. The recommended setup is **one shared Worker + one
+D1 serving all five tables** (`reminders`, `calendar_events`, `reminder_lists`,
+`notes`, `note_folders`), with both CLIs pointed at the same URL and token. This
+skill does not bundle the Worker source — when you need to deploy,
+`./references/fetch-worker.sh` pulls it into a gitignored `references/worker/`
+scratch directory.
 
 The local side of the sync depends on the platform: macOS bridges EventKit and
 D1, while Linux (and other non-Apple platforms) bridges a local SQLite database
@@ -21,21 +20,27 @@ first step on a fresh machine — it populates that local database before the
 
 ## 1. Deploy the Worker (one-time)
 
-Run these from the bundled worker directory (`references/worker/`):
+**Already running the shared Worker for `note`?** Skip this section — just set
+`EVENT_SYNC_API_URL` / `EVENT_SYNC_API_TOKEN` to that Worker's URL and token in
+step 3.
+
+Otherwise fetch the canonical Worker and deploy it once for both CLIs:
 
 ```bash
-pnpm install
+./references/fetch-worker.sh              # pulls the canonical Worker into references/worker/
+cd references/worker && pnpm install
 pnpm exec wrangler login
-pnpm exec wrangler d1 create event-sync   # copy the database_id into wrangler.toml
-pnpm run db:migrate:remote                # create the D1 tables (events set)
+pnpm exec wrangler d1 create apple-sync   # copy the database_id into wrangler.toml
+cp wrangler.toml.example wrangler.toml    # defaults to all five tables + migrations/all
+# fill in database_id in wrangler.toml (ENTITIES + migrations_dir already set for the shared setup)
+pnpm run db:migrate:remote                # one pass: creates all five tables
 openssl rand -hex 32 | pnpm exec wrangler secret put API_TOKEN   # auto-generate and set a strong shared token
 pnpm run deploy                           # prints https://<worker>.workers.dev
 ```
 
-`wrangler.toml` is checked in with
+For an `event`-only deployment, set
 `ENTITIES="reminders,calendar_events,reminder_lists"` and
-`migrations_dir="migrations/events"` already set; only `database_id` needs
-filling in after `d1 create`.
+`migrations_dir="migrations/events"` in `wrangler.toml` before migrating.
 
 Upgrading an existing deployment: the pull cursor is keyed on a monotonic `seq`
 column added by migration `0002_events_seq_cursor`. After pulling new changes,
@@ -69,6 +74,11 @@ export EVENT_SYNC_API_TOKEN=<the API_TOKEN from step 1>
 export EVENT_ENCRYPTION_KEY=<the base64 key from step 2>   # identical on every device
 # EVENT_SYNC_DEVICE_ID is optional; defaults to the machine hostname
 ```
+
+When sharing one Worker with `note`, `EVENT_SYNC_API_URL` / `NOTE_SYNC_API_URL`
+point at the same URL and `EVENT_SYNC_API_TOKEN` / `NOTE_SYNC_API_TOKEN` hold the
+same token. The encryption keys stay independent — `EVENT_ENCRYPTION_KEY` is
+event-specific and the Worker only ever stores ciphertext.
 
 Verify with `event sync status` — it should report `Config source: environment
 variables`. If the connection env vars are unset, `event` falls back to a config
