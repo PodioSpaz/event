@@ -76,6 +76,14 @@ file written by `event sync config --api-url <URL> --api-token <TOKEN> --device-
 `EVENT_ENCRYPTION_KEY` is read from the environment only and is never written to
 that file.
 
+### Headless / systemd services
+
+Shell profiles (`~/.bashrc`, `~/.zshrc`) only affect interactive shells. If
+`event` runs inside a systemd-managed service (e.g. an agent gateway), the
+service process inherits **none** of those exports. See
+[Systemd Deployment](references/docs/systemd-deployment.md) for the full setup
+(env file + systemd drop-in).
+
 ## 4. Sync
 
 ```bash
