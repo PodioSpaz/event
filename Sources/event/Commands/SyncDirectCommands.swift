@@ -11,36 +11,24 @@ import Foundation
 /// using EVENT_ENCRYPTION_KEY, so the direct path matches the main `event sync`.
 private enum DirectAccess {
   static func withReminderService<R>(
-    _ body: (CloudflareReminderService) async throws -> R
+    _ body: @Sendable (CloudflareReminderService) async throws -> R
   ) async throws -> R {
     let config = try SyncConfigStore.load()
-    let client = D1SyncClient(config: config)
-    let encryptor = try EventEncryptor.fromEnvironment()
-    let service = CloudflareReminderService(client: client, encryptor: encryptor)
-    do {
-      let result = try await body(service)
-      try await client.shutdown()
-      return result
-    } catch {
-      try? await client.shutdown()
-      throw error
+    return try await D1SyncClient.withClient(config: config) { client in
+      let encryptor = try EventEncryptor.fromEnvironment()
+      let service = CloudflareReminderService(client: client, encryptor: encryptor)
+      return try await body(service)
     }
   }
 
   static func withCalendarService<R>(
-    _ body: (CloudflareCalendarService) async throws -> R
+    _ body: @Sendable (CloudflareCalendarService) async throws -> R
   ) async throws -> R {
     let config = try SyncConfigStore.load()
-    let client = D1SyncClient(config: config)
-    let encryptor = try EventEncryptor.fromEnvironment()
-    let service = CloudflareCalendarService(client: client, encryptor: encryptor)
-    do {
-      let result = try await body(service)
-      try await client.shutdown()
-      return result
-    } catch {
-      try? await client.shutdown()
-      throw error
+    return try await D1SyncClient.withClient(config: config) { client in
+      let encryptor = try EventEncryptor.fromEnvironment()
+      let service = CloudflareCalendarService(client: client, encryptor: encryptor)
+      return try await body(service)
     }
   }
 
