@@ -367,6 +367,21 @@
       } else if let dueDateString = dueDate {
         let date = try Date.validated(dateTimeString: dueDateString)
         let components = DateComponentsBuilder.build(from: date, timeZone: .current)
+
+        // EventKit does not move a reminder's existing time-based alarms when its
+        // due date changes, so an "alert on this day" notification keeps firing on
+        // the old date. Shift every non-location alarm by the same delta as the
+        // due-date change to keep it in sync.
+        if let oldDueDate = DateComponentsBuilder.toDate(from: ekReminder.dueDateComponents ?? components) {
+          let delta = date.timeIntervalSince(oldDueDate)
+          let timeBasedAlarms = ekReminder.alarms?.filter { $0.structuredLocation == nil } ?? []
+          for alarm in timeBasedAlarms {
+            if let absoluteDate = alarm.absoluteDate {
+              alarm.absoluteDate = absoluteDate.addingTimeInterval(delta)
+            }
+          }
+        }
+
         ekReminder.dueDateComponents = components
       }
 
