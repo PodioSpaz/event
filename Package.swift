@@ -55,7 +55,13 @@ let package = Package(
       path: "Sources/event",
       swiftSettings: [
         .unsafeFlags(["-parse-as-library"])
-      ]
+      ],
+      plugins: ["GitVersionPlugin"]
+    ),
+    .plugin(
+      name: "GitVersionPlugin",
+      capability: .buildTool(),
+      path: "Plugins/GitVersionPlugin"
     ),
     .testTarget(
       name: "EventSyncTests",
