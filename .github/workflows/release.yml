@@ -2,145 +2,18 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
-  build:
-    name: Build (${{ matrix.platform }}-${{ matrix.arch }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-26
-            platform: darwin
-            arch: arm64
-          - os: macos-26
-            platform: darwin
-            arch: amd64
-          - os: ubuntu-24.04
-            platform: linux
-            arch: amd64
-          - os: ubuntu-24.04-arm
-            platform: linux
-            arch: arm64
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Select Xcode with Swift 6.2 (macOS)
-        if: matrix.platform == 'darwin'
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: latest-stable
-
-      - name: Build (macOS)
-        if: matrix.platform == 'darwin'
-        run: |
-          # Fetch the SSH-URL apple-sync-kit dependency over anonymous HTTPS (public repo, no key).
-          git config --global url."https://github.com/".insteadOf "git@github.com:"
-          ARCH_FLAG=""
-          [ "${{ matrix.arch }}" = "amd64" ] && ARCH_FLAG="--arch x86_64"
-          swift build -c release $ARCH_FLAG
-          echo "BIN_PATH=$(swift build -c release $ARCH_FLAG --show-bin-path)" >> "$GITHUB_ENV"
-
-      - name: Build (Linux)
-        if: matrix.platform == 'linux'
-        run: |
-          docker run --rm \
-            -v "$PWD":/app \
-            -w /app \
-            swift:6.2-noble \
-            bash -c "git config --global url.https://github.com/.insteadOf git@github.com: && swift build -c release --static-swift-stdlib"
-          echo "BIN_PATH=.build/release" >> "$GITHUB_ENV"
-
-      - name: Create archive
-        run: |
-          cp "$BIN_PATH/event" ./event
-          tar -czf event-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz event
-          rm event
-
-      - name: Upload release asset
-        uses: softprops/action-gh-release@v2
-        with:
-          files: event-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
-          generate_release_notes: true
-
-  update-homebrew:
-    name: Update Homebrew formula
-    needs: build
+  release-please:
     runs-on: ubuntu-latest
     steps:
-      - name: Update formula
-        env:
-          DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          VERSION=${TAG#v}
-          declare -A SHAS
-          gh release download "${TAG}" --repo ${{ github.repository }} --pattern "*.tar.gz"
-          for platform in darwin-amd64 darwin-arm64 linux-amd64 linux-arm64; do
-            SHAS[$platform]=$(sha256sum "event-${platform}.tar.gz" | cut -d' ' -f1)
-          done
-
-          mkdir -p ~/.ssh
-          echo "$DEPLOY_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-          git clone git@github.com:FradSer/homebrew-brew.git tap
-          cd tap
-          mkdir -p Formula
-
-          cat > Formula/event.rb << FORMULA
-          class Event < Formula
-            desc "CLI tool for managing Apple Reminders and Calendar via EventKit"
-            homepage "https://github.com/FradSer/event"
-            version "${VERSION}"
-            license "MIT"
-
-            on_macos do
-              if Hardware::CPU.arm?
-                url "https://github.com/FradSer/event/releases/download/${TAG}/event-darwin-arm64.tar.gz"
-                sha256 "${SHAS[darwin-arm64]}"
-              else
-                url "https://github.com/FradSer/event/releases/download/${TAG}/event-darwin-amd64.tar.gz"
-                sha256 "${SHAS[darwin-amd64]}"
-              end
-            end
-
-            on_linux do
-              if Hardware::CPU.arm?
-                url "https://github.com/FradSer/event/releases/download/${TAG}/event-linux-arm64.tar.gz"
-                sha256 "${SHAS[linux-arm64]}"
-              else
-                url "https://github.com/FradSer/event/releases/download/${TAG}/event-linux-amd64.tar.gz"
-                sha256 "${SHAS[linux-amd64]}"
-              end
-            end
-
-            def install
-              bin.install "event"
-            end
-
-            test do
-              system "#{bin}/event", "--help"
-            end
-          end
-          FORMULA
-
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config user.name "github-actions[bot]"
-          git add Formula/event.rb
-          if git diff --cached --quiet; then
-            echo "Formula already up to date; nothing to commit."
-          else
-            git commit -m "chore: update event to ${VERSION}"
-            git push
-          fi
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: .github/release-please-config.json
+          manifest-file: .github/release-please-manifest.json

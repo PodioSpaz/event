@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.0] - 2026-07-07
+
+### Added
+- Fetch script to pull the canonical AppleSyncKit worker instead of bundling it in-repo
+
+### Changed
+- Switch apple-events skill to reference the canonical sync-kit worker
+- Use checksum verification in sync-from-kit.sh
+- Make Homebrew formula update idempotent in CI
+
+### Fixed
+- Gracefully shut down D1SyncClient connections on exit
+
+### Documentation
+- Update worker deployment instructions and project references
+- Update wrangler example configuration
+
 ## [0.4.0] - 2026-06-23
 
 ### Changed
