@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.0](https://github.com/PodioSpaz/event/compare/v0.5.0...v0.6.0) (2026-07-13)
+
+
+### Features
+
+* **app:** derive CLI version from git tag or commit hash ([3a2e473](https://github.com/PodioSpaz/event/commit/3a2e4735e217d0d58feecee2c486c4fbf4672210))
+
+
+### Bug Fixes
+
+* **reminders:** shift time-based alarms when due date changes ([c8bce6b](https://github.com/PodioSpaz/event/commit/c8bce6bfe077da65a9a5abe67683e08dceed7094))
+
+
+### Documentation
+
+* **skl:** document reminder continuation workflow ([464397c](https://github.com/PodioSpaz/event/commit/464397cc74012b0e1a32f704574de28521486e48))
+
 ## [0.5.0] - 2026-07-07
 
 ### Added
@@ -66,4 +83,3 @@
 - Update apple-events skill documentation
 - Add sync architecture and design documentation
 - Refine Cloudflare sync design
-
