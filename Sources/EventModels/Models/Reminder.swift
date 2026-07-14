@@ -13,7 +13,9 @@ public struct Reminder: Codable, Sendable {
   public let location: String?
   public let timeZone: String?
   public let dueDate: String?
+  public let dueDateIsAllDay: Bool?
   public let startDate: String?
+  public let startDateIsAllDay: Bool?
   public let completionDate: String?
   public let creationDate: String?
   public let lastModifiedDate: String?
@@ -34,7 +36,9 @@ public struct Reminder: Codable, Sendable {
     location: String?,
     timeZone: String?,
     dueDate: String?,
+    dueDateIsAllDay: Bool? = nil,
     startDate: String?,
+    startDateIsAllDay: Bool? = nil,
     completionDate: String?,
     creationDate: String?,
     lastModifiedDate: String?,
@@ -54,7 +58,9 @@ public struct Reminder: Codable, Sendable {
     self.location = location
     self.timeZone = timeZone
     self.dueDate = dueDate
+    self.dueDateIsAllDay = dueDateIsAllDay
     self.startDate = startDate
+    self.startDateIsAllDay = startDateIsAllDay
     self.completionDate = completionDate
     self.creationDate = creationDate
     self.lastModifiedDate = lastModifiedDate

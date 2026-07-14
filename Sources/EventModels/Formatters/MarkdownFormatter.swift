@@ -43,7 +43,13 @@ public struct MarkdownFormatter: OutputFormatter {
         output += "- \(checkbox) \(reminder.title)\(flagged)\n"
 
         if let dueDate = reminder.dueDate {
-          output += "  - Due: \(dueDate)\n"
+          let allDay = reminder.dueDateIsAllDay == true ? " (All Day)" : ""
+          output += "  - Due: \(dueDate)\(allDay)\n"
+        }
+
+        if let startDate = reminder.startDate {
+          let allDay = reminder.startDateIsAllDay == true ? " (All Day)" : ""
+          output += "  - Start: \(startDate)\(allDay)\n"
         }
 
         if reminder.priority > 0 {
@@ -85,7 +91,13 @@ public struct MarkdownFormatter: OutputFormatter {
     output += "**List:** \(reminder.list)\n\n"
 
     if let dueDate = reminder.dueDate {
-      output += "**Due Date:** \(dueDate)\n\n"
+      let allDay = reminder.dueDateIsAllDay == true ? " (All Day)" : ""
+      output += "**Due Date:** \(dueDate)\(allDay)\n\n"
+    }
+
+    if let startDate = reminder.startDate {
+      let allDay = reminder.startDateIsAllDay == true ? " (All Day)" : ""
+      output += "**Start Date:** \(startDate)\(allDay)\n\n"
     }
 
     if reminder.priority > 0 {

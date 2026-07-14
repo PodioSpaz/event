@@ -116,7 +116,9 @@ struct ReminderCommands: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "List name")
     var list: String?
 
-    @Option(name: .shortAndLong, help: "Due date (yyyy-MM-dd HH:mm:ss)")
+    @Option(
+      name: .shortAndLong,
+      help: "Due date (yyyy-MM-dd HH:mm:ss, or yyyy-MM-dd for an all-day due date)")
     var due: String?
 
     @Option(name: .shortAndLong, help: "Priority (0-9)")
@@ -204,13 +206,17 @@ struct ReminderCommands: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "New priority (0-9)")
     var priority: Int?
 
-    @Option(name: .shortAndLong, help: "New due date (yyyy-MM-dd HH:mm:ss)")
+    @Option(
+      name: .shortAndLong,
+      help: "New due date (yyyy-MM-dd HH:mm:ss, or yyyy-MM-dd for an all-day due date)")
     var due: String?
 
     @Flag(name: .long, help: "Remove due date")
     var clearDue = false
 
-    @Option(name: .long, help: "New start date (yyyy-MM-dd HH:mm:ss)")
+    @Option(
+      name: .long,
+      help: "New start date (yyyy-MM-dd HH:mm:ss, or yyyy-MM-dd for an all-day start date)")
     var start: String?
 
     @Flag(name: .long, help: "Remove start date")
