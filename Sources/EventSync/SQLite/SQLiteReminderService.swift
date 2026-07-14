@@ -64,7 +64,9 @@ public actor SQLiteReminderService: RemindersBackend {
       location: nil,
       timeZone: TimeZone.current.identifier,
       dueDate: params.dueDate,
+      dueDateIsAllDay: params.dueDate.map(Date.isAllDayFormat),
       startDate: params.startDate,
+      startDateIsAllDay: params.startDate.map(Date.isAllDayFormat),
       completionDate: nil,
       creationDate: now,
       lastModifiedDate: now,
@@ -97,6 +99,9 @@ public actor SQLiteReminderService: RemindersBackend {
     let existing = try await fetchReminder(byId: id)
     let now = ISO8601DateFormatter.syncISO8601.string(from: Date())
 
+    let dueDate = params.clearDue ? nil : (params.dueDate ?? existing.dueDate)
+    let startDate = params.clearStart ? nil : (params.startDate ?? existing.startDate)
+
     let updated = Reminder(
       id: existing.id,
       title: params.title ?? existing.title,
@@ -107,8 +112,10 @@ public actor SQLiteReminderService: RemindersBackend {
       url: params.url ?? existing.url,
       location: existing.location,
       timeZone: existing.timeZone,
-      dueDate: params.clearDue ? nil : (params.dueDate ?? existing.dueDate),
-      startDate: params.clearStart ? nil : (params.startDate ?? existing.startDate),
+      dueDate: dueDate,
+      dueDateIsAllDay: dueDate.map(Date.isAllDayFormat),
+      startDate: startDate,
+      startDateIsAllDay: startDate.map(Date.isAllDayFormat),
       completionDate: (params.completed ?? existing.isCompleted)
         ? (existing.completionDate ?? now) : nil,
       creationDate: existing.creationDate,

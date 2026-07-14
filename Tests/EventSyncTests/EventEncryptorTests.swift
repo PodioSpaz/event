@@ -15,10 +15,14 @@ final class EventEncryptorTests: XCTestCase {
     EventEncryptor(encryption: EncryptionService(key: SymmetricKey(size: .bits256)))
   }
 
-  private func makeReminder(notes: String?, url: String?) -> Reminder {
+  private func makeReminder(
+    notes: String?, url: String?,
+    dueDate: String? = nil, dueDateIsAllDay: Bool? = nil
+  ) -> Reminder {
     Reminder(
       id: "r1", title: "Buy milk", isCompleted: false, isFlagged: false, list: "Errands",
-      notes: notes, url: url, location: nil, timeZone: "UTC", dueDate: nil, startDate: nil,
+      notes: notes, url: url, location: nil, timeZone: "UTC", dueDate: dueDate,
+      dueDateIsAllDay: dueDateIsAllDay, startDate: nil,
       completionDate: nil, creationDate: "2026-01-01", lastModifiedDate: "2026-01-02",
       externalId: nil, priority: 0, alarms: nil, recurrenceRules: nil, locationTrigger: nil)
   }
@@ -95,5 +99,19 @@ final class EventEncryptorTests: XCTestCase {
     let reminder = makeReminder(notes: "just text", url: nil)
     let decrypted = try await encryptor.decryptReminders([reminder])
     XCTAssertEqual(decrypted[0].notes, "just text")
+  }
+
+  func testEncryptDecryptPreservesDueDateIsAllDay() async throws {
+    let encryptor = makeEncryptor()
+    let reminder = makeReminder(
+      notes: "secret note", url: nil, dueDate: "2026-07-13", dueDateIsAllDay: true)
+
+    let encrypted = try await encryptor.encryptReminders([reminder])
+    XCTAssertEqual(encrypted[0].dueDate, "2026-07-13")
+    XCTAssertEqual(encrypted[0].dueDateIsAllDay, true)
+
+    let decrypted = try await encryptor.decryptReminders(encrypted)
+    XCTAssertEqual(decrypted[0].dueDate, "2026-07-13")
+    XCTAssertEqual(decrypted[0].dueDateIsAllDay, true)
   }
 }

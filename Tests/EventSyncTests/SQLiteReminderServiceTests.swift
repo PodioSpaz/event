@@ -76,6 +76,22 @@ final class SQLiteReminderServiceTests: XCTestCase {
     XCTAssertEqual(reminder.dueDate, dueDate)
   }
 
+  func testCreateReminderWithAllDayDueDate() async throws {
+    let params = CreateReminderParams(
+      title: "All-day Reminder",
+      dueDate: "2026-07-13",
+      priority: 0
+    )
+
+    let reminder = try await service.createReminder(params)
+
+    XCTAssertEqual(reminder.dueDate, "2026-07-13")
+    XCTAssertEqual(reminder.dueDateIsAllDay, true)
+
+    let fetched = try await service.fetchReminder(byId: reminder.id)
+    XCTAssertEqual(fetched.dueDateIsAllDay, true)
+  }
+
   // MARK: - Fetch Tests
 
   func testFetchRemindersEmpty() async throws {

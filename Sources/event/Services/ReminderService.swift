@@ -308,9 +308,8 @@
 
       // Set due date
       if let dueDateString = dueDate {
-        let date = try Date.validated(dateTimeString: dueDateString)
-        let components = DateComponentsBuilder.build(from: date, timeZone: .current)
-        ekReminder.dueDateComponents = components
+        let resolution = try ReminderDateInputResolver.resolve(dateString: dueDateString)
+        ekReminder.dueDateComponents = resolution.components
       }
 
       // Set priority
@@ -365,15 +364,16 @@
       if clearDue {
         ekReminder.dueDateComponents = nil
       } else if let dueDateString = dueDate {
-        let date = try Date.validated(dateTimeString: dueDateString)
-        let components = DateComponentsBuilder.build(from: date, timeZone: .current)
+        let resolution = try ReminderDateInputResolver.resolve(dateString: dueDateString)
 
         // EventKit does not move a reminder's existing time-based alarms when its
         // due date changes, so an "alert on this day" notification keeps firing on
         // the old date. Shift every non-location alarm by the same delta as the
         // due-date change to keep it in sync.
-        if let oldDueDate = DateComponentsBuilder.toDate(from: ekReminder.dueDateComponents ?? components) {
-          let delta = date.timeIntervalSince(oldDueDate)
+        if let oldDueDate = DateComponentsBuilder.toDate(
+          from: ekReminder.dueDateComponents ?? resolution.components)
+        {
+          let delta = resolution.date.timeIntervalSince(oldDueDate)
           let timeBasedAlarms = ekReminder.alarms?.filter { $0.structuredLocation == nil } ?? []
           for alarm in timeBasedAlarms {
             if let absoluteDate = alarm.absoluteDate {
@@ -382,15 +382,14 @@
           }
         }
 
-        ekReminder.dueDateComponents = components
+        ekReminder.dueDateComponents = resolution.components
       }
 
       if clearStart {
         ekReminder.startDateComponents = nil
       } else if let startDateString = startDate {
-        let date = try Date.validated(dateTimeString: startDateString)
-        let components = DateComponentsBuilder.build(from: date, timeZone: .current)
-        ekReminder.startDateComponents = components
+        let resolution = try ReminderDateInputResolver.resolve(dateString: startDateString)
+        ekReminder.startDateComponents = resolution.components
       }
 
       if let priority = priority {
