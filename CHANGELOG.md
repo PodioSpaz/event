@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/PodioSpaz/event/compare/v0.6.0...v0.6.1) (2026-07-14)
+
+
+### Bug Fixes
+
+* **app:** accept all-day due/start dates for reminders ([8704deb](https://github.com/PodioSpaz/event/commit/8704deb9d43f09f0c6e02c27bcbf2a67104b0f59)), closes [#1](https://github.com/PodioSpaz/event/issues/1)
+
 ## [0.6.0](https://github.com/PodioSpaz/event/compare/v0.5.0...v0.6.0) (2026-07-13)
 
 
