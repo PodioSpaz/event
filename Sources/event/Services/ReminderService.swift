@@ -366,13 +366,20 @@
       } else if let dueDateString = dueDate {
         let resolution = try ReminderDateInputResolver.resolve(dateString: dueDateString)
 
-        // EventKit does not move a reminder's existing time-based alarms when its
-        // due date changes, so an "alert on this day" notification keeps firing on
-        // the old date. Shift every non-location alarm by the same delta as the
-        // due-date change to keep it in sync.
-        if let oldDueDate = DateComponentsBuilder.toDate(
+        if resolution.isAllDay {
+          // EventKit does not clear a reminder's existing time-based alarms when its
+          // due date becomes all-day, so a display alert survives (shifted, not
+          // cleared) and Reminders.app still shows a phantom time badge even though
+          // dueDateIsAllDay is correctly true underneath. An all-day due date has no
+          // clock time to alert at, so drop these alarms outright.
+          ekReminder.removeTimeBasedAlarms()
+        } else if let oldDueDate = DateComponentsBuilder.toDate(
           from: ekReminder.dueDateComponents ?? resolution.components)
         {
+          // EventKit does not move a reminder's existing time-based alarms when its
+          // due date changes, so an "alert on this day" notification keeps firing on
+          // the old date. Shift every non-location alarm by the same delta as the
+          // due-date change to keep it in sync.
           let delta = resolution.date.timeIntervalSince(oldDueDate)
           let timeBasedAlarms = ekReminder.alarms?.filter { $0.structuredLocation == nil } ?? []
           for alarm in timeBasedAlarms {
