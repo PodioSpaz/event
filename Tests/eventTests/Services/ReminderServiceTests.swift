@@ -88,5 +88,45 @@
       XCTAssertNil(remaining.first?.structuredLocation)
       XCTAssertEqual(remaining.first?.relativeOffset, -300)
     }
+
+    // MARK: - removeTimeBasedAlarms
+
+    func testRemoveTimeBasedAlarmsPreservesLocationAlarms() throws {
+      // Given a reminder with one time-based alarm and one location-based alarm…
+      let reminder = makeReminder(title: "Mixed alarms")
+      reminder.addAlarm(EKAlarm(relativeOffset: -600))  // 10 minutes before
+      reminder.addAlarm(makeLocationAlarm(title: "Home"))
+      XCTAssertEqual(reminder.alarms?.count, 2)
+
+      // When the time-based alarms are removed…
+      reminder.removeTimeBasedAlarms()
+
+      // …only the location-based alarm remains.
+      let remaining = reminder.alarms ?? []
+      XCTAssertEqual(remaining.count, 1)
+      XCTAssertNotNil(remaining.first?.structuredLocation)
+    }
+
+    func testRemoveTimeBasedAlarmsHandlesNoAlarms() {
+      // Given a reminder with no alarms at all, the helper is a no-op.
+      let reminder = makeReminder(title: "No alarms")
+
+      reminder.removeTimeBasedAlarms()
+
+      XCTAssertTrue(reminder.alarms?.isEmpty ?? true)
+    }
+
+    func testRemoveTimeBasedAlarmsHandlesOnlyTimeBasedAlarms() {
+      // Given a reminder with only time-based alarms (e.g. the "Remind me on a day"
+      // display alert this fix targets), all of them are cleared.
+      let reminder = makeReminder(title: "Time-based only")
+      reminder.addAlarm(EKAlarm(relativeOffset: -600))
+      reminder.addAlarm(EKAlarm(absoluteDate: Date()))
+      XCTAssertEqual(reminder.alarms?.count, 2)
+
+      reminder.removeTimeBasedAlarms()
+
+      XCTAssertTrue(reminder.alarms?.isEmpty ?? true)
+    }
   }
 #endif

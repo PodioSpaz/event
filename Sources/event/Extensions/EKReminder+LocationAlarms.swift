@@ -15,6 +15,16 @@
         removeAlarm(alarm)
       }
     }
+
+    /// Remove every time-based (non-location) alarm attached to this reminder.
+    ///
+    /// Snapshots the alarms first so the underlying array is not mutated during iteration.
+    func removeTimeBasedAlarms() {
+      let timeBasedAlarms = alarms?.filter { $0.structuredLocation == nil } ?? []
+      for alarm in timeBasedAlarms {
+        removeAlarm(alarm)
+      }
+    }
   }
 
 #endif
