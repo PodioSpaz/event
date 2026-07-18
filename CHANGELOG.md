@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/PodioSpaz/event/compare/v0.6.1...v0.6.2) (2026-07-18)
+
+
+### Bug Fixes
+
+* clear time-based alarms when a reminder's due date becomes all-day ([624c1a4](https://github.com/PodioSpaz/event/commit/624c1a47bfc1fab73546cd076688d60a251844a5)), closes [#6](https://github.com/PodioSpaz/event/issues/6)
+
 ## [0.6.1](https://github.com/PodioSpaz/event/compare/v0.6.0...v0.6.1) (2026-07-14)
 
 
